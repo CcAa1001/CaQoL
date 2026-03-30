@@ -1,0 +1,77 @@
+import 'quest_config.dart';
+
+class AlarmModel {
+  final String id;
+  final String label;
+  final int hour;
+  final int minute;
+  final List<bool> repeatDays; // index 0=Mon, 6=Sun
+  final bool isEnabled;
+  final QuestConfig quest;
+
+  AlarmModel({
+    required this.id,
+    required this.label,
+    required this.hour,
+    required this.minute,
+    required this.repeatDays,
+    required this.isEnabled,
+    required this.quest,
+  });
+
+  AlarmModel copyWith({
+    String? label,
+    int? hour,
+    int? minute,
+    List<bool>? repeatDays,
+    bool? isEnabled,
+    QuestConfig? quest,
+  }) =>
+      AlarmModel(
+        id: id,
+        label: label ?? this.label,
+        hour: hour ?? this.hour,
+        minute: minute ?? this.minute,
+        repeatDays: repeatDays ?? this.repeatDays,
+        isEnabled: isEnabled ?? this.isEnabled,
+        quest: quest ?? this.quest,
+      );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'label': label,
+    'hour': hour,
+    'minute': minute,
+    'repeatDays': repeatDays,
+    'isEnabled': isEnabled,
+    'quest': quest.toMap(),
+  };
+
+  factory AlarmModel.fromMap(Map<String, dynamic> map) => AlarmModel(
+    id: map['id'],
+    label: map['label'],
+    hour: map['hour'],
+    minute: map['minute'],
+    repeatDays: List<bool>.from(map['repeatDays']),
+    isEnabled: map['isEnabled'],
+    quest: QuestConfig.fromMap(Map<String, dynamic>.from(map['quest'])),
+  );
+
+  String get timeString {
+    final h = hour.toString().padLeft(2, '0');
+    final m = minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  String get repeatString {
+    if (repeatDays.every((d) => !d)) return 'Once';
+    if (repeatDays.every((d) => d)) return 'Every day';
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return repeatDays
+        .asMap()
+        .entries
+        .where((e) => e.value)
+        .map((e) => names[e.key])
+        .join(', ');
+  }
+}
