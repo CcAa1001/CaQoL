@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "3442674846",
+    "project_id": "caqol-1001",
+    "storage_bucket": "caqol-1001.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:3442674846:android:8e7c19a8c6b4298308bf8f",
+        "android_client_info": {
+          "package_name": "com.ccaa.caqol"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "3442674846-eo5gsd73c8698qt8nt5m41puk01966fg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ccaa.caqol",
+            "certificate_hash": "7c753f2773f009dd751ee3f4652392ae26e1844e"
+          }
+        },
+        {
+          "client_id": "3442674846-c4lpco0mo2qi5po0p2tb1knrg150t906.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqx8IhNfmn4plB2dIqpL27JttjMJCyGy8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "3442674846-c4lpco0mo2qi5po0p2tb1knrg150t906.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

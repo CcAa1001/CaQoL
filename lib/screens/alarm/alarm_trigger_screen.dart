@@ -1,48 +1,136 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:alarm/alarm.dart';
-import '../../models/quest_config.dart';
-import 'quests/math_quest.dart';
-import 'quests/type_quest.dart';
-import 'quests/simon_quest.dart';
+﻿import 'dart:async';
 
-class AlarmTriggerScreen extends StatefulWidget {
-  final String alarmId;
-  final String label;
-  final QuestConfig quest;
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../models/alarm.dart';
+import '../../models/quest_config.dart';
+import '../../services/notes_service.dart';
+import '../../providers/alarm_provider.dart';
+import '../notes/note_editor_screen.dart';
+import 'quests/math_quest.dart';
+import 'quests/qr_quest.dart';
+import 'quests/simon_quest.dart';
+import 'quests/squat_quest.dart';
+import 'quests/type_quest.dart';
+
+class AlarmTriggerScreen extends ConsumerStatefulWidget {
+  final AlarmModel alarm;
+  final bool isPreview;
 
   const AlarmTriggerScreen({
     super.key,
-    required this.alarmId,
-    required this.label,
-    required this.quest,
+    required this.alarm,
+    this.isPreview = false,
   });
 
   @override
-  State<AlarmTriggerScreen> createState() => _AlarmTriggerScreenState();
+  ConsumerState<AlarmTriggerScreen> createState() => _AlarmTriggerScreenState();
 }
 
-class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
-  bool _showQuest = false;
+class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
+  late bool _showQuest;
+  Timer? _clockTimer;
+  Timer? _missionTimer;
+  late int _missionTimeLeft;
+  bool _missionStarted = false;
+  bool _timeoutHandled = false;
+  bool _finishing = false;
 
-  Future<void> _stopAlarm() async {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      final id = int.tryParse(widget.alarmId) ?? 0;
-      await Alarm.stop(id);
-    }
+  @override
+  void initState() {
+    super.initState();
+    _showQuest = widget.isPreview && widget.alarm.quest.type != QuestType.none;
+    _missionTimeLeft = widget.alarm.quest.missionSeconds;
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    _missionTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _dismiss() async {
-    await _stopAlarm();
+    if (_finishing) return;
+    _finishing = true;
+    _missionTimer?.cancel();
+    if (widget.isPreview) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+
+    await ref.read(alarmProvider.notifier).completeAfterDismiss(widget.alarm.id);
     if (mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (r) => false);
+      final linkedNoteId = widget.alarm.noteId;
+      final linkedNote = linkedNoteId == null ? null : NotesService().getById(linkedNoteId);
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      if (linkedNote != null) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => NoteEditorScreen(note: linkedNote),
+          ),
+        );
+      }
     }
   }
 
   Future<void> _snooze() async {
-    await _stopAlarm();
+    if (_finishing) return;
+    _finishing = true;
+    _missionTimer?.cancel();
+    if (widget.isPreview) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+
+    await ref.read(alarmProvider.notifier).snooze(widget.alarm.id);
     if (mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (r) => false);
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
+
+  Future<void> _startMission() async {
+    if (_missionStarted || _timeoutHandled) return;
+    _missionStarted = true;
+    if (!widget.isPreview) {
+      await ref.read(alarmProvider.notifier).silenceForMission(widget.alarm.id);
+      _startMissionTimer();
+    }
+    if (mounted) {
+      setState(() => _showQuest = true);
+    }
+  }
+
+  void _startMissionTimer() {
+    _missionTimer?.cancel();
+    _timeoutHandled = false;
+    _missionTimeLeft = widget.alarm.quest.missionSeconds;
+    _missionTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_missionTimeLeft <= 1) {
+        timer.cancel();
+        await _handleMissionTimeout();
+        return;
+      }
+      setState(() => _missionTimeLeft -= 1);
+    });
+  }
+
+  Future<void> _handleMissionTimeout() async {
+    if (_timeoutHandled || _finishing) return;
+    _timeoutHandled = true;
+    if (widget.isPreview) return;
+
+    await ref.read(alarmProvider.notifier).restartAfterMissionTimeout(widget.alarm.id);
+    if (mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 
@@ -55,26 +143,32 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
 
   String get _dateString {
     final now = DateTime.now();
-    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
   }
 
   String _questInstruction() {
-    switch (widget.quest.type) {
-      case QuestType.none: return '';
-      case QuestType.math: return 'Solve the math problem';
-      case QuestType.typeSentence: return 'Type the sentence';
-      case QuestType.simon: return 'Repeat the pattern';
-      case QuestType.qr: return 'Scan your QR code';
-      case QuestType.squat: return 'Complete ${widget.quest.squatCount} squats';
+    switch (widget.alarm.quest.type) {
+      case QuestType.none:
+        return '';
+      case QuestType.math:
+        return 'Solve the math problem';
+      case QuestType.typeSentence:
+        return 'Type the sentence';
+      case QuestType.simon:
+        return 'Beat 3 Simon rounds before time runs out';
+      case QuestType.qr:
+        return 'Scan your QR code';
+      case QuestType.squat:
+        return 'Walk ${widget.alarm.quest.squatCount} steps';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: widget.isPreview,
       child: Scaffold(
         backgroundColor: Colors.black,
         body: _showQuest ? _buildQuestView() : _buildLockView(),
@@ -97,9 +191,9 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
             const SizedBox(height: 60),
             const Icon(Icons.lock_outline, color: Colors.white54, size: 20),
             const SizedBox(height: 4),
-            const Text(
-              'Swipe up to unlock',
-              style: TextStyle(color: Colors.white54, fontSize: 13),
+            Text(
+              widget.isPreview ? 'Preview mode' : 'Swipe up to unlock',
+              style: const TextStyle(color: Colors.white54, fontSize: 13),
             ),
             const SizedBox(height: 40),
             Text(
@@ -121,7 +215,9 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
             ),
             const Spacer(),
             Text(
-              widget.label.isEmpty ? 'Alarm' : widget.label,
+              widget.alarm.label.isEmpty
+                  ? (widget.isPreview ? 'Mission preview' : 'Alarm')
+                  : widget.alarm.label,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 28,
@@ -129,7 +225,7 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
                 letterSpacing: 1,
               ),
             ),
-            if (widget.quest.type != QuestType.none) ...[
+            if (widget.alarm.quest.type != QuestType.none) ...[
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -138,7 +234,7 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  '🎯 ${_questInstruction()} to dismiss',
+                  'Mission: ${_questInstruction()}',
                   style: const TextStyle(color: Colors.white60, fontSize: 13),
                 ),
               ),
@@ -148,20 +244,20 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _LockButton(
-                  icon: Icons.snooze,
-                  label: 'Snooze',
-                  onTap: _snooze,
+                  icon: widget.isPreview ? Icons.close : Icons.snooze,
+                  label: widget.isPreview ? 'Close' : 'Snooze',
+                  onTap: widget.isPreview ? () => Navigator.of(context).pop() : _snooze,
                 ),
                 GestureDetector(
                   onTap: () {
-                    if (widget.quest.type == QuestType.none) {
+                    if (widget.alarm.quest.type == QuestType.none) {
                       _dismiss();
                     } else {
-                      setState(() => _showQuest = true);
+                      _startMission();
                     }
                   },
                   child: Container(
-                    width: 200,
+                    width: 220,
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     decoration: BoxDecoration(
                       color: const Color(0xFFE8A020),
@@ -169,9 +265,9 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
                     ),
                     child: Center(
                       child: Text(
-                        widget.quest.type == QuestType.none
-                            ? 'Dismiss'
-                            : 'Wake Up 👊',
+                        widget.alarm.quest.type == QuestType.none
+                            ? (widget.isPreview ? 'Close' : 'Dismiss')
+                            : (widget.isPreview ? 'Start Preview' : 'Wake Up'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -200,7 +296,9 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
             const Icon(Icons.alarm, size: 48, color: Colors.white),
             const SizedBox(height: 12),
             Text(
-              widget.label.isEmpty ? 'Alarm' : widget.label,
+              widget.alarm.label.isEmpty
+                  ? (widget.isPreview ? 'Mission preview' : 'Alarm')
+                  : widget.alarm.label,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 22,
@@ -212,6 +310,27 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
               _questInstruction(),
               style: const TextStyle(color: Colors.white60, fontSize: 14),
             ),
+            if (!widget.isPreview) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'Alarm muted while solving • ${_missionTimeLeft}s before it rings again',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ),
+            ],
+            if (widget.isPreview) ...[
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close preview'),
+              ),
+            ],
             const SizedBox(height: 16),
             Expanded(child: _buildQuestWidget()),
           ],
@@ -221,44 +340,38 @@ class _AlarmTriggerScreenState extends State<AlarmTriggerScreen> {
   }
 
   Widget _buildQuestWidget() {
-    switch (widget.quest.type) {
+    switch (widget.alarm.quest.type) {
       case QuestType.math:
         return MathQuest(
-          difficulty: widget.quest.mathDifficulty,
+          difficulty: widget.alarm.quest.mathDifficulty,
           onSuccess: _dismiss,
         );
       case QuestType.typeSentence:
         return TypeQuest(
-          sentence: widget.quest.sentence,
+          sentence: widget.alarm.quest.sentence,
           onSuccess: _dismiss,
         );
       case QuestType.simon:
         return SimonQuest(
-          gridSize: widget.quest.gridSize,
+          gridSize: widget.alarm.quest.gridSize,
           onSuccess: _dismiss,
         );
       case QuestType.qr:
+        return QrQuest(
+          expectedValue: widget.alarm.quest.qrValue,
+          onSuccess: _dismiss,
+        );
       case QuestType.squat:
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Coming soon!',
-                  style: TextStyle(color: Colors.white70, fontSize: 16)),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _dismiss,
-                child: const Text('Dismiss for now'),
-              ),
-            ],
-          ),
+        return SquatQuest(
+          targetCount: widget.alarm.quest.squatCount,
+          onSuccess: _dismiss,
         );
       case QuestType.none:
         return Center(
           child: ElevatedButton.icon(
             onPressed: _dismiss,
             icon: const Icon(Icons.alarm_off),
-            label: const Text('Dismiss'),
+            label: Text(widget.isPreview ? 'Close' : 'Dismiss'),
           ),
         );
     }
@@ -293,8 +406,10 @@ class _LockButton extends StatelessWidget {
             child: Icon(icon, color: Colors.white70, size: 24),
           ),
           const SizedBox(height: 6),
-          Text(label,
-              style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
         ],
       ),
     );

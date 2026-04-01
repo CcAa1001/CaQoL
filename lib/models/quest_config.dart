@@ -2,6 +2,7 @@ enum QuestType { none, math, typeSentence, simon, qr, squat }
 
 class QuestConfig {
   final QuestType type;
+  final int missionSeconds;
 
   // Math
   final String mathDifficulty; // easy, medium, hard
@@ -20,6 +21,7 @@ class QuestConfig {
 
   const QuestConfig({
     this.type = QuestType.none,
+    this.missionSeconds = 30,
     this.mathDifficulty = 'easy',
     this.sentence = 'I am awake and ready for the day',
     this.gridSize = 3,
@@ -29,6 +31,7 @@ class QuestConfig {
 
   Map<String, dynamic> toMap() => {
     'type': type.name,
+    'missionSeconds': missionSeconds,
     'mathDifficulty': mathDifficulty,
     'sentence': sentence,
     'gridSize': gridSize,
@@ -41,6 +44,7 @@ class QuestConfig {
       (e) => e.name == map['type'],
       orElse: () => QuestType.none,
     ),
+    missionSeconds: map['missionSeconds'] ?? 30,
     mathDifficulty: map['mathDifficulty'] ?? 'easy',
     sentence: map['sentence'] ?? 'I am awake and ready for the day',
     gridSize: map['gridSize'] ?? 3,
@@ -50,6 +54,7 @@ class QuestConfig {
 
   QuestConfig copyWith({
     QuestType? type,
+    int? missionSeconds,
     String? mathDifficulty,
     String? sentence,
     int? gridSize,
@@ -58,6 +63,7 @@ class QuestConfig {
   }) =>
       QuestConfig(
         type: type ?? this.type,
+        missionSeconds: missionSeconds ?? this.missionSeconds,
         mathDifficulty: mathDifficulty ?? this.mathDifficulty,
         sentence: sentence ?? this.sentence,
         gridSize: gridSize ?? this.gridSize,

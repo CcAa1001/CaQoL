@@ -3,6 +3,8 @@ import 'quest_config.dart';
 class AlarmModel {
   final String id;
   final String label;
+  final String soundPath;
+  final String? noteId;
   final int hour;
   final int minute;
   final List<bool> repeatDays; // index 0=Mon, 6=Sun
@@ -12,6 +14,8 @@ class AlarmModel {
   AlarmModel({
     required this.id,
     required this.label,
+    required this.soundPath,
+    this.noteId,
     required this.hour,
     required this.minute,
     required this.repeatDays,
@@ -21,6 +25,9 @@ class AlarmModel {
 
   AlarmModel copyWith({
     String? label,
+    String? soundPath,
+    String? noteId,
+    bool? clearNoteId,
     int? hour,
     int? minute,
     List<bool>? repeatDays,
@@ -30,6 +37,8 @@ class AlarmModel {
       AlarmModel(
         id: id,
         label: label ?? this.label,
+        soundPath: soundPath ?? this.soundPath,
+        noteId: clearNoteId == true ? null : noteId ?? this.noteId,
         hour: hour ?? this.hour,
         minute: minute ?? this.minute,
         repeatDays: repeatDays ?? this.repeatDays,
@@ -40,6 +49,8 @@ class AlarmModel {
   Map<String, dynamic> toMap() => {
     'id': id,
     'label': label,
+    'soundPath': soundPath,
+    'noteId': noteId,
     'hour': hour,
     'minute': minute,
     'repeatDays': repeatDays,
@@ -50,6 +61,8 @@ class AlarmModel {
   factory AlarmModel.fromMap(Map<String, dynamic> map) => AlarmModel(
     id: map['id'],
     label: map['label'],
+    soundPath: map['soundPath'] ?? 'assets/alarm.mp3',
+    noteId: map['noteId'],
     hour: map['hour'],
     minute: map['minute'],
     repeatDays: List<bool>.from(map['repeatDays']),

@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -39,20 +40,8 @@
         </activity>
 
         <service
-            android:name="dev.fluttercommunity.plus.androidalarm.AlarmService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback"/>
-
-        <receiver
-            android:name="dev.fluttercommunity.plus.androidalarm.AlarmBroadcastReceiver"
+            android:name="com.gdelataillade.alarm.services.NotificationOnKillService"
             android:exported="false"/>
-        <receiver
-            android:name="dev.fluttercommunity.plus.androidalarm.RebootBroadcastReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-            </intent-filter>
-        </receiver>
 
         <meta-data
             android:name="flutterEmbedding"
@@ -66,3 +55,4 @@
         </intent>
     </queries>
 </manifest>
+
