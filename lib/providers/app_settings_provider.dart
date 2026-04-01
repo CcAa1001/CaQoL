@@ -31,4 +31,31 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
     await _service.save(updated);
     state = updated;
   }
+
+  Future<void> setDefaultStickyBoardId(String? boardId) async {
+    final updated = state.copyWith(
+      defaultStickyBoardId: boardId,
+      clearDefaultStickyBoardId: boardId == null,
+    );
+    await _service.save(updated);
+    state = updated;
+  }
+
+  Future<void> setAwakeCheckEnabled(bool value) async {
+    final updated = state.copyWith(awakeCheckEnabled: value);
+    await _service.save(updated);
+    state = updated;
+  }
+
+  Future<void> setAwakeCheckDelayMinutes(int minutes) async {
+    final updated = state.copyWith(awakeCheckDelayMinutes: minutes);
+    await _service.save(updated);
+    state = updated;
+  }
+
+  Future<void> setAwakeCheckWindowMinutes(int minutes) async {
+    final updated = state.copyWith(awakeCheckWindowMinutes: minutes);
+    await _service.save(updated);
+    state = updated;
+  }
 }

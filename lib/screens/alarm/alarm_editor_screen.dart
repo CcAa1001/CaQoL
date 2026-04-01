@@ -603,31 +603,44 @@ class _QrConfig extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final registeredValues = {
+      if (quest.qrValue.trim().isNotEmpty) quest.qrValue.trim(),
+      ...quest.qrOptions.map((item) => item.trim()).where((item) => item.isNotEmpty),
+    }.toList();
     return _ConfigCard(
-      title: 'QR code',
+      title: 'QR / barcode roulette',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (quest.qrValue.isNotEmpty) ...[
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceHigh,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: AppTheme.success, size: 16),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      quest.qrValue,
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+          Text(
+            registeredValues.isEmpty
+                ? 'No household codes registered yet.'
+                : '${registeredValues.length} code${registeredValues.length == 1 ? '' : 's'} saved. One will be chosen at random each morning.',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          if (registeredValues.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: registeredValues.map((value) {
+                final index = registeredValues.indexOf(value);
+                return InputChip(
+                  label: Text(
+                    'Item ${index + 1}',
+                    style: const TextStyle(fontSize: 12),
                   ),
-                ],
-              ),
+                  onDeleted: () {
+                    final updated = [...registeredValues]..remove(value);
+                    onChanged(
+                      quest.copyWith(
+                        qrValue: updated.isEmpty ? '' : updated.first,
+                        qrOptions: updated,
+                      ),
+                    );
+                  },
+                );
+              }).toList(),
             ),
             const SizedBox(height: 10),
           ],
@@ -644,11 +657,22 @@ class _QrConfig extends StatelessWidget {
                   ),
                 );
                 if (value != null && value.isNotEmpty) {
-                  onChanged(quest.copyWith(qrValue: value));
+                  final updated = [...registeredValues];
+                  if (!updated.contains(value)) {
+                    updated.add(value);
+                  }
+                  onChanged(
+                    quest.copyWith(
+                      qrValue: updated.first,
+                      qrOptions: updated,
+                    ),
+                  );
                 }
               },
               icon: const Icon(Icons.qr_code_scanner, size: 18),
-              label: Text(quest.qrValue.isEmpty ? 'Scan QR to register' : 'Re-scan QR'),
+              label: Text(
+                registeredValues.isEmpty ? 'Scan QR to register' : 'Add another code',
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.surfaceHigh,
                 foregroundColor: AppTheme.textPrimary,

@@ -13,6 +13,32 @@ import '../../theme/app_theme.dart';
 import '../../widgets/account_sheet.dart';
 import '../notes/note_editor_screen.dart';
 
+List<StickyChecklistItem> _buildChecklistFromText(String text) {
+  return text
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .map(
+        (line) => StickyChecklistItem(
+          id: DateTime.now().microsecondsSinceEpoch.toString() + line.hashCode.toString(),
+          text: line,
+        ),
+      )
+      .toList();
+}
+
+String _stickyPreviewText(Sticky sticky) {
+  if (!sticky.checklistMode) {
+    return sticky.body;
+  }
+  if (sticky.checklistItems.isEmpty) {
+    return 'Checklist';
+  }
+  return sticky.checklistItems
+      .map((item) => '${item.isDone ? '[x]' : '[ ]'} ${item.text}')
+      .join('\n');
+}
+
 class StickiesScreen extends ConsumerStatefulWidget {
   const StickiesScreen({super.key});
 
@@ -61,6 +87,9 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
       final matchesQuery = query.isEmpty ||
           sticky.title.toLowerCase().contains(query) ||
           sticky.body.toLowerCase().contains(query) ||
+          sticky.checklistItems.any(
+            (item) => item.text.toLowerCase().contains(query),
+          ) ||
           boardName.contains(query) ||
           (sticky.linkedNoteTitle ?? '').toLowerCase().contains(query);
       return matchesBoard && matchesQuery;
@@ -435,6 +464,24 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.push_pin_outlined),
+              title: const Text('Pin all in board'),
+              onTap: () async {
+                Navigator.pop(context);
+                await ref.read(stickiesProvider.notifier).pinAllInBoard(board.id);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.checklist_rtl_outlined),
+              title: const Text('Clear completed checklist items'),
+              onTap: () async {
+                Navigator.pop(context);
+                await ref
+                    .read(stickiesProvider.notifier)
+                    .clearCompletedChecklistItems(board.id);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline),
               title: const Text('Delete board'),
               onTap: () async {
@@ -464,6 +511,8 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
     String? selectedBoardId = sticky?.boardId ?? _currentBoardId;
     bool isPinned = sticky?.isPinned ?? false;
     String size = sticky?.size ?? 'medium';
+    bool checklistMode = sticky?.checklistMode ?? false;
+    DateTime? expiresAt = sticky?.expiresAt;
     String? linkedNoteId = sticky?.linkedNoteId;
     String? linkedNoteTitle = sticky?.linkedNoteTitle;
 
@@ -621,6 +670,62 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
               const SizedBox(height: 16),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
+                title: const Text('Checklist mode'),
+                subtitle: const Text(
+                  'Turn each line into a tappable checkbox on the board.',
+                ),
+                value: checklistMode,
+                onChanged: (value) => setSheetState(() => checklistMode = value),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Expires'),
+                subtitle: Text(
+                  expiresAt == null
+                      ? 'Never'
+                      : '${expiresAt!.day}/${expiresAt!.month}/${expiresAt!.year} ${expiresAt!.hour.toString().padLeft(2, '0')}:${expiresAt!.minute.toString().padLeft(2, '0')}',
+                ),
+                trailing: Wrap(
+                  spacing: 4,
+                  children: [
+                    TextButton(
+                      onPressed: () => setSheetState(() => expiresAt = null),
+                      child: const Text('Clear'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final now = DateTime.now();
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: expiresAt ?? now,
+                          firstDate: now,
+                          lastDate: now.add(const Duration(days: 3650)),
+                        );
+                        if (date == null || !mounted) return;
+                        final time = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(expiresAt ?? now),
+                        );
+                        if (time == null) return;
+                        setSheetState(() {
+                          expiresAt = DateTime(
+                            date.year,
+                            date.month,
+                            date.day,
+                            time.hour,
+                            time.minute,
+                          );
+                        });
+                      },
+                      child: const Text('Set'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
                 title: const Text('Pin sticky'),
                 subtitle: const Text('Pinned stickies stay on top of the board.'),
                 value: isPinned,
@@ -661,6 +766,13 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
                 onPressed: () async {
                   final title = titleCtrl.text.trim();
                   final body = bodyCtrl.text.trim();
+                  final nextChecklistItems = checklistMode
+                      ? sticky != null &&
+                              sticky.checklistMode &&
+                              sticky.body.trim() == body
+                          ? sticky.checklistItems
+                          : _buildChecklistFromText(body)
+                      : const <StickyChecklistItem>[];
                   if (title.isEmpty && body.isEmpty) return;
                   if (sticky == null) {
                     await ref.read(stickiesProvider.notifier).add(
@@ -671,6 +783,9 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
                           linkedNoteId: linkedNoteId,
                           linkedNoteTitle: linkedNoteTitle,
                           size: size,
+                          checklistMode: checklistMode,
+                          checklistItems: nextChecklistItems,
+                          expiresAt: expiresAt,
                           isPinned: isPinned,
                         );
                   } else {
@@ -685,6 +800,10 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
                             linkedNoteTitle: linkedNoteTitle,
                             clearLinkedNoteId: linkedNoteId == null,
                             size: size,
+                            checklistMode: checklistMode,
+                            checklistItems: nextChecklistItems,
+                            expiresAt: expiresAt,
+                            clearExpiresAt: expiresAt == null,
                             isPinned: isPinned,
                           ),
                         );
@@ -765,14 +884,70 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  SelectableText(
-                    sticky.body,
-                    style: const TextStyle(
-                      color: Colors.black87,
-                      fontSize: 18,
-                      height: 1.45,
+                  if (sticky.checklistMode)
+                    ...sticky.checklistItems.map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: InkWell(
+                          onTap: () async {
+                            await ref
+                                .read(stickiesProvider.notifier)
+                                .toggleChecklistItem(sticky.id, item.id);
+                            if (sheetContext.mounted) {
+                              Sticky refreshed = sticky;
+                              for (final candidate in ref.read(stickiesProvider)) {
+                                if (candidate.id == sticky.id) {
+                                  refreshed = candidate;
+                                  break;
+                                }
+                              }
+                              Navigator.pop(sheetContext);
+                              _showStickyDetailSheet(
+                                context,
+                                refreshed,
+                                boards,
+                                notes,
+                              );
+                            }
+                          },
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                item.isDone
+                                    ? Icons.check_box_rounded
+                                    : Icons.check_box_outline_blank_rounded,
+                                color: Colors.black87,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  item.text,
+                                  style: TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 18,
+                                    height: 1.45,
+                                    decoration: item.isDone
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SelectableText(
+                      sticky.body,
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 18,
+                        height: 1.45,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -869,6 +1044,23 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
                       ),
                     ],
                   ),
+                  if (sticky.expiresAt != null) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.hourglass_bottom_rounded,
+                          size: 18,
+                          color: AppTheme.textSecondary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Expires ${sticky.expiresAt!.day}/${sticky.expiresAt!.month}/${sticky.expiresAt!.year}',
+                          style: const TextStyle(color: AppTheme.textPrimary),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -961,7 +1153,7 @@ class _StickyListTile extends StatelessWidget {
         subtitle: Text(
           sticky.title.trim().isEmpty
               ? (boardName ?? 'No board')
-              : '${boardName ?? 'No board'} • ${sticky.body}',
+              : '${boardName ?? 'No board'} • ${_stickyPreviewText(sticky)}',
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(color: Colors.black54),
@@ -1066,7 +1258,7 @@ class _StickyCard extends StatelessWidget {
             ],
             const SizedBox(height: 8),
             Text(
-              sticky.body,
+              _stickyPreviewText(sticky),
               maxLines: _lineCount(),
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -1101,6 +1293,47 @@ class _StickyCard extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+            ],
+            if (sticky.checklistMode || sticky.expiresAt != null) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (sticky.checklistMode)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.35),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${sticky.checklistItems.where((item) => item.isDone).length}/${sticky.checklistItems.length} done',
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  if (sticky.expiresAt != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.35),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Expires ${sticky.expiresAt!.day}/${sticky.expiresAt!.month}',
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ],
           ],

@@ -12,11 +12,17 @@ class StickyBoardsService {
   Box<Map> get _box => Hive.box<Map>(_boxName);
 
   List<StickyBoard> getAll({bool includeDeleted = false}) {
-    return _box.values
-        .map((e) => StickyBoard.fromMap(Map<String, dynamic>.from(e)))
-        .where((board) => includeDeleted || !board.isDeleted)
-        .toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final boards = <StickyBoard>[];
+    for (final raw in _box.values) {
+      try {
+        final board = StickyBoard.fromMap(Map<String, dynamic>.from(raw));
+        if (includeDeleted || !board.isDeleted) {
+          boards.add(board);
+        }
+      } catch (_) {}
+    }
+    boards.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return boards;
   }
 
   StickyBoard? getById(String id) {
@@ -24,7 +30,11 @@ class StickyBoardsService {
     if (raw == null) {
       return null;
     }
-    return StickyBoard.fromMap(Map<String, dynamic>.from(raw));
+    try {
+      return StickyBoard.fromMap(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> save(StickyBoard board) async {

@@ -13,10 +13,14 @@ class AlarmHistoryService {
   Box<Map> get _box => Hive.box<Map>(_boxName);
 
   List<AlarmHistoryEntry> getAll() {
-    return _box.values
-        .map((e) => AlarmHistoryEntry.fromMap(Map<String, dynamic>.from(e)))
-        .toList()
-      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final entries = <AlarmHistoryEntry>[];
+    for (final raw in _box.values) {
+      try {
+        entries.add(AlarmHistoryEntry.fromMap(Map<String, dynamic>.from(raw)));
+      } catch (_) {}
+    }
+    entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return entries;
   }
 
   Future<void> log(

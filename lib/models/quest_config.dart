@@ -15,6 +15,7 @@ class QuestConfig {
 
   // QR
   final String qrValue;
+  final List<String> qrOptions;
 
   // Squat
   final int squatCount;
@@ -26,6 +27,7 @@ class QuestConfig {
     this.sentence = 'I am awake and ready for the day',
     this.gridSize = 3,
     this.qrValue = '',
+    this.qrOptions = const [],
     this.squatCount = 10,
   });
 
@@ -36,6 +38,7 @@ class QuestConfig {
     'sentence': sentence,
     'gridSize': gridSize,
     'qrValue': qrValue,
+    'qrOptions': qrOptions,
     'squatCount': squatCount,
   };
 
@@ -49,6 +52,9 @@ class QuestConfig {
     sentence: map['sentence'] ?? 'I am awake and ready for the day',
     gridSize: map['gridSize'] ?? 3,
     qrValue: map['qrValue'] ?? '',
+    qrOptions: map['qrOptions'] != null
+        ? List<String>.from(map['qrOptions'])
+        : const [],
     squatCount: map['squatCount'] ?? 10,
   );
 
@@ -59,6 +65,7 @@ class QuestConfig {
     String? sentence,
     int? gridSize,
     String? qrValue,
+    List<String>? qrOptions,
     int? squatCount,
   }) =>
       QuestConfig(
@@ -68,6 +75,7 @@ class QuestConfig {
         sentence: sentence ?? this.sentence,
         gridSize: gridSize ?? this.gridSize,
         qrValue: qrValue ?? this.qrValue,
+        qrOptions: qrOptions ?? this.qrOptions,
         squatCount: squatCount ?? this.squatCount,
       );
 }

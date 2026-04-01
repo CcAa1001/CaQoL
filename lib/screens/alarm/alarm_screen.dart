@@ -20,7 +20,8 @@ class AlarmScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final alarms = ref.watch(alarmProvider);
-    final history = ref.watch(alarmHistoryProvider).take(6).toList();
+    final allHistory = ref.watch(alarmHistoryProvider);
+    final history = allHistory.take(6).toList();
     final user = ref.watch(authStateProvider).valueOrNull;
     final alarmService = AlarmService();
     final enabledAlarms = alarms.where((a) => a.isEnabled).toList()
@@ -120,6 +121,11 @@ class AlarmScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                 child: _NextAlarmBanner(alarm: nextAlarm),
               ),
+            if (allHistory.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: _AlarmInsightsCard(entries: allHistory),
+              ),
             if (history.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -185,6 +191,12 @@ class _AlarmHistoryCard extends StatelessWidget {
         return 'Missed';
       case 'mission_started':
         return 'Mission started';
+      case 'awake_check_scheduled':
+        return 'Awake check';
+      case 'awake_check_completed':
+        return 'Awake confirmed';
+      case 'awake_check_failed':
+        return 'Awake check failed';
       case 'updated':
         return 'Updated';
       case 'enabled':
@@ -302,6 +314,190 @@ class _AlarmHistoryCard extends StatelessWidget {
       backgroundColor: AppTheme.surface,
       showDragHandle: true,
       builder: (_) => _AlarmHistorySheet(entries: entries),
+    );
+  }
+}
+
+class _AlarmInsightsCard extends StatelessWidget {
+  const _AlarmInsightsCard({required this.entries});
+
+  final List<AlarmHistoryEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final last28Days = List.generate(
+      28,
+      (index) => DateTime.now().subtract(Duration(days: 27 - index)),
+    );
+    final dayScores = <String, Color>{};
+    for (final day in last28Days) {
+      final key = '${day.year}-${day.month}-${day.day}';
+      final dayEntries = entries.where(
+        (entry) =>
+            entry.timestamp.year == day.year &&
+            entry.timestamp.month == day.month &&
+            entry.timestamp.day == day.day,
+      );
+      final hasMissed = dayEntries.any((entry) => entry.event == 'missed');
+      final hasDismissed = dayEntries.any((entry) => entry.event == 'dismissed');
+      dayScores[key] = hasMissed
+          ? AppTheme.danger
+          : hasDismissed
+              ? AppTheme.success
+              : AppTheme.surfaceHigh;
+    }
+
+    final missionStarts = entries
+        .where((entry) => entry.event == 'mission_started')
+        .toList();
+    final missionFailures =
+        entries.where((entry) => entry.event == 'missed').toList();
+    final snoozes = entries.where((entry) => entry.event == 'snoozed').length;
+    final grogginess = missionStarts.isEmpty
+        ? 0
+        : ((missionFailures.length / missionStarts.length) * 100).round();
+    final questFailures = <String, int>{};
+    for (final entry in missionFailures) {
+      final match = RegExp(r'during ([a-zA-Z_]+)').firstMatch(entry.details);
+      final quest = match?.group(1) ?? 'unknown';
+      questFailures[quest] = (questFailures[quest] ?? 0) + 1;
+    }
+    final worstQuestEntry = questFailures.entries.isEmpty
+        ? null
+        : (questFailures.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value))).first;
+    var cleanStreak = 0;
+    for (final day in last28Days.reversed) {
+      final dayEntries = entries.where(
+        (entry) =>
+            entry.timestamp.year == day.year &&
+            entry.timestamp.month == day.month &&
+            entry.timestamp.day == day.day,
+      );
+      final hasMissed = dayEntries.any((entry) => entry.event == 'missed');
+      final hasDismissed = dayEntries.any((entry) => entry.event == 'dismissed');
+      if (hasDismissed && !hasMissed) {
+        cleanStreak += 1;
+      } else if (dayEntries.isNotEmpty) {
+        break;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Wake consistency',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: last28Days.map((day) {
+              final key = '${day.year}-${day.month}-${day.day}';
+              return Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: dayScores[key],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _InsightPill(
+                  label: 'Grogginess',
+                  value: '$grogginess%',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _InsightPill(
+                  label: 'Worst quest',
+                  value: worstQuestEntry == null
+                      ? 'None'
+                      : '${worstQuestEntry.key} (${worstQuestEntry.value})',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _InsightPill(
+                  label: 'Snoozes',
+                  value: '$snoozes',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _InsightPill(
+                  label: 'Clean streak',
+                  value: '$cleanStreak days',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InsightPill extends StatelessWidget {
+  const _InsightPill({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -431,6 +627,12 @@ class _AlarmHistorySheetState extends State<_AlarmHistorySheet> {
         return 'Mission started';
       case 'missed':
         return 'Mission failed';
+      case 'awake_check_scheduled':
+        return 'Awake check scheduled';
+      case 'awake_check_completed':
+        return 'Awake confirmed';
+      case 'awake_check_failed':
+        return 'Awake check failed';
       case 'updated':
         return 'Updated';
       default:

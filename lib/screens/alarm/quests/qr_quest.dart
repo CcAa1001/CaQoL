@@ -2,12 +2,12 @@
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class QrQuest extends StatefulWidget {
-  final String expectedValue;
+  final List<String> expectedValues;
   final VoidCallback onSuccess;
 
   const QrQuest({
     super.key,
-    required this.expectedValue,
+    required this.expectedValues,
     required this.onSuccess,
   });
 
@@ -20,6 +20,18 @@ class _QrQuestState extends State<QrQuest> {
   String? _error;
   bool _completed = false;
   bool _torchEnabled = false;
+  late final String _selectedValue;
+
+  @override
+  void initState() {
+    super.initState();
+    final options = widget.expectedValues
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    options.shuffle();
+    _selectedValue = options.isEmpty ? '' : options.first;
+  }
 
   @override
   void dispose() {
@@ -33,7 +45,7 @@ class _QrQuestState extends State<QrQuest> {
     final scannedValue = capture.barcodes.first.rawValue?.trim() ?? '';
     if (scannedValue.isEmpty) return;
 
-    if (widget.expectedValue.trim().isEmpty || scannedValue == widget.expectedValue.trim()) {
+    if (_selectedValue.isEmpty || scannedValue == _selectedValue) {
       _completed = true;
       widget.onSuccess();
       return;
@@ -56,12 +68,20 @@ class _QrQuestState extends State<QrQuest> {
           ),
           const SizedBox(height: 8),
           Text(
-            widget.expectedValue.trim().isEmpty
+            _selectedValue.isEmpty
                 ? 'This alarm does not have a saved QR yet, so any detected code will pass.'
-                : 'Point your camera at the saved code to dismiss the alarm.',
+                : 'Point your camera at the selected code to dismiss the alarm.',
             style: const TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
+          if (widget.expectedValues.where((item) => item.trim().isNotEmpty).length > 1) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Today\'s random target: ${widget.expectedValues.indexOf(_selectedValue) + 1} of ${widget.expectedValues.where((item) => item.trim().isNotEmpty).length}',
+              style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 20),
           Expanded(
             child: ClipRRect(

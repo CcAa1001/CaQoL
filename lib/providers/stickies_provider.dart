@@ -35,6 +35,7 @@ class StickiesNotifier extends StateNotifier<List<Sticky>> {
   }
 
   Future<void> _initialize() async {
+    await _expireOldStickies();
     _load();
     if (!isCloudEnabled) {
       return;
@@ -50,6 +51,29 @@ class StickiesNotifier extends StateNotifier<List<Sticky>> {
     state = _service.getAll();
   }
 
+  Future<void> _expireOldStickies() async {
+    final now = DateTime.now();
+    final expired = _service
+        .getAll(includeDeleted: true)
+        .where(
+          (sticky) =>
+              !sticky.isDeleted &&
+              sticky.expiresAt != null &&
+              !sticky.expiresAt!.isAfter(now),
+        )
+        .toList();
+    if (expired.isEmpty) {
+      return;
+    }
+    for (final sticky in expired) {
+      final deleted = sticky.copyWith(isDeleted: true);
+      await _service.save(deleted);
+      if (isCloudEnabled) {
+        unawaited(_cloudSync.save(deleted));
+      }
+    }
+  }
+
   Future<void> add({
     String title = '',
     String body = '',
@@ -58,6 +82,9 @@ class StickiesNotifier extends StateNotifier<List<Sticky>> {
     String? linkedNoteId,
     String? linkedNoteTitle,
     String size = 'medium',
+    bool checklistMode = false,
+    List<StickyChecklistItem> checklistItems = const [],
+    DateTime? expiresAt,
     bool isPinned = false,
   }) async {
     final now = DateTime.now();
@@ -70,6 +97,9 @@ class StickiesNotifier extends StateNotifier<List<Sticky>> {
       linkedNoteId: linkedNoteId,
       linkedNoteTitle: linkedNoteTitle,
       size: size,
+      checklistMode: checklistMode,
+      checklistItems: checklistItems,
+      expiresAt: expiresAt,
       isPinned: isPinned,
       sortOrder: _service.nextSortOrder(boardId: boardId),
       updatedAt: now,
@@ -151,6 +181,61 @@ class StickiesNotifier extends StateNotifier<List<Sticky>> {
       }
       if (sticky == null) continue;
       final updated = sticky.copyWith(sortOrder: index);
+      await _service.save(updated);
+      if (isCloudEnabled) {
+        unawaited(_cloudSync.save(updated));
+      }
+    }
+    _load();
+  }
+
+  Future<void> toggleChecklistItem(
+    String stickyId,
+    String itemId,
+  ) async {
+    final sticky = _service.getById(stickyId);
+    if (sticky == null) return;
+    final updatedItems = sticky.checklistItems
+        .map(
+          (item) => item.id == itemId
+              ? item.copyWith(isDone: !item.isDone)
+              : item,
+        )
+        .toList();
+    await update(sticky.copyWith(checklistItems: updatedItems));
+  }
+
+  Future<void> pinAllInBoard(String? boardId) async {
+    final targets = _service
+        .getAll(includeDeleted: true)
+        .where((sticky) => sticky.boardId == boardId && !sticky.isDeleted)
+        .toList();
+    for (final sticky in targets) {
+      final updated = sticky.copyWith(isPinned: true);
+      await _service.save(updated);
+      if (isCloudEnabled) {
+        unawaited(_cloudSync.save(updated));
+      }
+    }
+    _load();
+  }
+
+  Future<void> clearCompletedChecklistItems(String? boardId) async {
+    final targets = _service
+        .getAll(includeDeleted: true)
+        .where(
+          (sticky) =>
+              sticky.boardId == boardId &&
+              sticky.checklistMode &&
+              sticky.checklistItems.any((item) => item.isDone),
+        )
+        .toList();
+    for (final sticky in targets) {
+      final updated = sticky.copyWith(
+        checklistItems: sticky.checklistItems
+            .where((item) => !item.isDone)
+            .toList(),
+      );
       await _service.save(updated);
       if (isCloudEnabled) {
         unawaited(_cloudSync.save(updated));

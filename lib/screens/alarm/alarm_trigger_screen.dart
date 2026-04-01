@@ -358,7 +358,9 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
         );
       case QuestType.qr:
         return QrQuest(
-          expectedValue: widget.alarm.quest.qrValue,
+          expectedValues: widget.alarm.quest.qrOptions.isEmpty
+              ? [widget.alarm.quest.qrValue]
+              : widget.alarm.quest.qrOptions,
           onSuccess: _dismiss,
         );
       case QuestType.squat:

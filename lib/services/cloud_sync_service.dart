@@ -270,6 +270,12 @@ class StickiesCloudSyncService {
       'linkedNoteId': sticky.linkedNoteId,
       'linkedNoteTitle': sticky.linkedNoteTitle,
       'size': sticky.size,
+      'checklistMode': sticky.checklistMode,
+      'checklistItems':
+          sticky.checklistItems.map((item) => item.toMap()).toList(),
+      'expiresAt': sticky.expiresAt == null
+          ? null
+          : Timestamp.fromDate(sticky.expiresAt!),
       'isPinned': sticky.isPinned,
       'sortOrder': sticky.sortOrder,
       'updatedAt': Timestamp.fromDate(sticky.updatedAt),
@@ -290,6 +296,15 @@ class StickiesCloudSyncService {
       linkedNoteId: map['linkedNoteId'],
       linkedNoteTitle: map['linkedNoteTitle'],
       size: map['size'] ?? 'medium',
+      checklistMode: map['checklistMode'] ?? false,
+      checklistItems: map['checklistItems'] != null
+          ? List<Map<String, dynamic>>.from(map['checklistItems'])
+              .map(StickyChecklistItem.fromMap)
+              .toList()
+          : const [],
+      expiresAt: map['expiresAt'] == null
+          ? null
+          : _readDate(map['expiresAt']),
       isPinned: map['isPinned'] ?? false,
       sortOrder: map['sortOrder'] ?? 0,
       updatedAt: updatedAt,

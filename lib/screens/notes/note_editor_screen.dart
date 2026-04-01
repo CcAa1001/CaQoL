@@ -8,6 +8,7 @@ import '../../models/note_folder.dart';
 import '../../providers/app_settings_provider.dart';
 import '../../providers/note_folders_provider.dart';
 import '../../providers/notes_provider.dart';
+import '../../providers/stickies_provider.dart';
 import '../../services/note_links_service.dart';
 
 class NoteEditorScreen extends ConsumerStatefulWidget {
@@ -109,7 +110,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     final folders = ref.watch(noteFoldersProvider);
     final notes = ref.watch(notesProvider);
     final activeNote = _findActiveNote(notes);
-    final linkedNotes = _linksService.parse(_bodyCtrl.text);
+    final linkedNotes = _linksService.parse(_bodyCtrl.text, notes: notes);
     final currentNote = activeNote;
     final backlinks = currentNote == null
         ? const <Note>[]
@@ -199,6 +200,18 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                           fontSize: 12,
                         ),
                       ),
+                      if (_searchCtrl.text.trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          _searchMatches.isEmpty
+                              ? 'No matches'
+                              : 'Match ${_searchIndex + 1} of ${_searchMatches.length}',
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 18),
                       if (_selectedFolderId != null ||
                           _tagsCtrl.text.trim().isNotEmpty ||
@@ -346,6 +359,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     onChecklist: () => _applyBlockPrefix('- [ ] '),
                     onQuote: () => _applyBlockPrefix('> '),
                     onLinkNote: () => _showLinkPicker(context, notes),
+                    onSendToBoard: _sendSelectionToBoard,
                     onComment: _addCommentFromSelection,
                     onAttachment: _addAttachment,
                   ),
@@ -507,6 +521,14 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     OutlinedButton.icon(
                       onPressed: () {
                         Navigator.pop(sheetContext);
+                        _sendSelectionToBoard();
+                      },
+                      icon: const Icon(Icons.sticky_note_2_outlined),
+                      label: const Text('Send to board'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
                         _addCommentFromSelection();
                       },
                       icon: const Icon(Icons.add_comment_outlined),
@@ -595,6 +617,40 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           },
         ),
       ),
+    );
+  }
+
+  Future<void> _sendSelectionToBoard() async {
+    final range = _normalizedSelectionRange(_bodyCtrl.selection, _bodyCtrl.text.length);
+    final selectedText = range.$1 == range.$2
+        ? ''
+        : _bodyCtrl.text.substring(range.$1, range.$2).trim();
+    if (selectedText.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Highlight some text first.')),
+        );
+      }
+      return;
+    }
+
+    final settings = ref.read(appSettingsProvider);
+    final current = _findActiveNote(ref.read(notesProvider));
+    final stickyTitle = selectedText.length > 40
+        ? '${selectedText.substring(0, 40).trim()}...'
+        : selectedText;
+    await ref.read(stickiesProvider.notifier).add(
+          title: stickyTitle,
+          body: selectedText,
+          boardId: settings.defaultStickyBoardId,
+          linkedNoteId: current?.id,
+          linkedNoteTitle: current?.title,
+        );
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Selection sent to Stickies board.')),
     );
   }
 
@@ -718,6 +774,13 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         onPressed: () async {
           editableTextState.hideToolbar();
           await _showLinkPicker(context, notes);
+        },
+      ),
+      ContextMenuButtonItem(
+        label: 'Send to board',
+        onPressed: () {
+          editableTextState.hideToolbar();
+          _sendSelectionToBoard();
         },
       ),
       ContextMenuButtonItem(
@@ -1128,7 +1191,9 @@ class _FormattedNotePreview extends StatelessWidget {
     }
     final defaultStyle = Theme.of(context).textTheme.bodyLarge ?? const TextStyle();
     final spans = <InlineSpan>[];
-    final tokenPattern = RegExp(r'(\[\[note:[^\]]+\]\]|\[\[attachment:[^\]]+\]\])');
+    final tokenPattern = RegExp(
+      r'(\[\[note:[^\]]+\]\]|\[\[attachment:[^\]]+\]\]|\[\[[^\[\]\|]+\]\])',
+    );
     var cursor = 0;
 
     for (final match in tokenPattern.allMatches(raw)) {
@@ -1172,7 +1237,7 @@ class _FormattedNotePreview extends StatelessWidget {
             ),
           ),
         );
-      } else {
+      } else if (token.startsWith('[[attachment:')) {
         final match = RegExp(r'\[\[attachment:([^\|\]]+)\|([^\]]+)\]\]')
             .firstMatch(token);
         final attachmentId = match?.group(1);
@@ -1198,6 +1263,35 @@ class _FormattedNotePreview extends StatelessWidget {
                         final resolvedAttachment = attachment;
                         if (resolvedAttachment != null) {
                           onOpenAttachment(resolvedAttachment);
+                        }
+                      },
+              ),
+            ),
+          ),
+        );
+      } else {
+        final title = token.substring(2, token.length - 2).trim();
+        Note? note;
+        for (final item in notes) {
+          if (item.title.trim().toLowerCase() == title.toLowerCase()) {
+            note = item;
+            break;
+          }
+        }
+        spans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ActionChip(
+                avatar: const Icon(Icons.auto_awesome_motion, size: 16),
+                label: Text(title),
+                onPressed: note == null
+                    ? null
+                    : () {
+                        final resolvedNote = note;
+                        if (resolvedNote != null) {
+                          onOpenNote(resolvedNote);
                         }
                       },
               ),
@@ -1290,6 +1384,7 @@ class _QuickActionBar extends StatelessWidget {
     required this.onChecklist,
     required this.onQuote,
     required this.onLinkNote,
+    required this.onSendToBoard,
     required this.onComment,
     required this.onAttachment,
   });
@@ -1300,6 +1395,7 @@ class _QuickActionBar extends StatelessWidget {
   final VoidCallback onChecklist;
   final VoidCallback onQuote;
   final VoidCallback onLinkNote;
+  final VoidCallback onSendToBoard;
   final VoidCallback onComment;
   final VoidCallback onAttachment;
 
@@ -1322,6 +1418,7 @@ class _QuickActionBar extends StatelessWidget {
             _ToolbarButton(icon: Icons.check_box_outlined, label: 'Checklist', onTap: onChecklist),
             _ToolbarButton(icon: Icons.format_quote, label: 'Quote', onTap: onQuote),
             _ToolbarButton(icon: Icons.link, label: 'Link', onTap: onLinkNote),
+            _ToolbarButton(icon: Icons.sticky_note_2_outlined, label: 'Board', onTap: onSendToBoard),
             _ToolbarButton(icon: Icons.add_comment_outlined, label: 'Comment', onTap: onComment),
             _ToolbarButton(icon: Icons.attach_file, label: 'Attach', onTap: onAttachment),
           ],
@@ -1530,6 +1627,13 @@ class _AttachmentTile extends StatelessWidget {
 
   final NoteAttachment attachment;
 
+  bool get _isRemoteImage {
+    final path = attachment.path.toLowerCase();
+    return (path.startsWith('http://') || path.startsWith('https://')) &&
+        ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
+            .any((ext) => path.endsWith(ext));
+  }
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -1548,29 +1652,47 @@ class _AttachmentTile extends StatelessWidget {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.attach_file),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    attachment.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                const Icon(Icons.attach_file),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        attachment.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        attachment.path,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    attachment.path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
+            if (_isRemoteImage) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  attachment.path,
+                  height: 140,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ],
           ],
         ),
       ),

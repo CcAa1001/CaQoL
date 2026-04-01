@@ -1,5 +1,43 @@
 ﻿import 'package:flutter/material.dart';
 
+class StickyChecklistItem {
+  final String id;
+  final String text;
+  final bool isDone;
+
+  const StickyChecklistItem({
+    required this.id,
+    required this.text,
+    this.isDone = false,
+  });
+
+  StickyChecklistItem copyWith({
+    String? text,
+    bool? isDone,
+  }) {
+    return StickyChecklistItem(
+      id: id,
+      text: text ?? this.text,
+      isDone: isDone ?? this.isDone,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'text': text,
+        'isDone': isDone,
+      };
+
+  factory StickyChecklistItem.fromMap(Map<String, dynamic> map) {
+    return StickyChecklistItem(
+      id: (map['id'] ?? DateTime.now().microsecondsSinceEpoch.toString())
+          .toString(),
+      text: (map['text'] ?? '').toString(),
+      isDone: map['isDone'] == true,
+    );
+  }
+}
+
 class Sticky {
   final String id;
   final String title;
@@ -9,6 +47,9 @@ class Sticky {
   final String? linkedNoteId;
   final String? linkedNoteTitle;
   final String size;
+  final bool checklistMode;
+  final List<StickyChecklistItem> checklistItems;
+  final DateTime? expiresAt;
   final bool isPinned;
   final int sortOrder;
   final DateTime updatedAt;
@@ -24,6 +65,9 @@ class Sticky {
     this.linkedNoteId,
     this.linkedNoteTitle,
     this.size = 'medium',
+    this.checklistMode = false,
+    this.checklistItems = const [],
+    this.expiresAt,
     this.isPinned = false,
     this.sortOrder = 0,
     required this.updatedAt,
@@ -41,6 +85,10 @@ class Sticky {
     bool? clearLinkedNoteId,
     String? linkedNoteTitle,
     String? size,
+    bool? checklistMode,
+    List<StickyChecklistItem>? checklistItems,
+    DateTime? expiresAt,
+    bool? clearExpiresAt,
     bool? isPinned,
     int? sortOrder,
     DateTime? updatedAt,
@@ -60,6 +108,9 @@ class Sticky {
           ? null
           : linkedNoteTitle ?? this.linkedNoteTitle,
       size: size ?? this.size,
+      checklistMode: checklistMode ?? this.checklistMode,
+      checklistItems: checklistItems ?? this.checklistItems,
+      expiresAt: clearExpiresAt == true ? null : expiresAt ?? this.expiresAt,
       isPinned: isPinned ?? this.isPinned,
       sortOrder: sortOrder ?? this.sortOrder,
       updatedAt: updatedAt ?? now,
@@ -77,6 +128,9 @@ class Sticky {
     'linkedNoteId': linkedNoteId,
     'linkedNoteTitle': linkedNoteTitle,
     'size': size,
+    'checklistMode': checklistMode,
+    'checklistItems': checklistItems.map((item) => item.toMap()).toList(),
+    'expiresAt': expiresAt?.toIso8601String(),
     'isPinned': isPinned,
     'sortOrder': sortOrder,
     'updatedAt': updatedAt.toIso8601String(),
@@ -85,20 +139,37 @@ class Sticky {
   };
 
   factory Sticky.fromMap(Map<String, dynamic> map) => Sticky(
-    id: map['id'],
-    title: map['title'] ?? '',
-    body: map['body'],
-    color: Color(map['color']),
-    boardId: map['boardId'],
-    linkedNoteId: map['linkedNoteId'],
-    linkedNoteTitle: map['linkedNoteTitle'],
-    size: map['size'] ?? 'medium',
+    id: (map['id'] ?? DateTime.now().microsecondsSinceEpoch.toString())
+        .toString(),
+    title: (map['title'] ?? '').toString(),
+    body: (map['body'] ?? '').toString(),
+    color: Color((map['color'] ?? 0xFFFFFF00) as int),
+    boardId: map['boardId']?.toString(),
+    linkedNoteId: map['linkedNoteId']?.toString(),
+    linkedNoteTitle: map['linkedNoteTitle']?.toString(),
+    size: (map['size'] ?? 'medium').toString(),
+    checklistMode: map['checklistMode'] == true,
+    checklistItems: map['checklistItems'] is List
+        ? (map['checklistItems'] as List)
+            .whereType<Map>()
+            .map((item) => StickyChecklistItem.fromMap(
+                  Map<String, dynamic>.from(item),
+                ))
+            .toList()
+        : const [],
+    expiresAt: map['expiresAt'] == null || map['expiresAt'].toString().isEmpty
+        ? null
+        : DateTime.tryParse(map['expiresAt'].toString()),
     isPinned: map['isPinned'] ?? false,
     sortOrder: map['sortOrder'] ?? 0,
-    updatedAt: DateTime.parse(map['updatedAt']),
+    updatedAt: DateTime.tryParse((map['updatedAt'] ?? '').toString()) ??
+        DateTime.now(),
     deviceUpdatedAt: map['deviceUpdatedAt'] != null
-        ? DateTime.parse(map['deviceUpdatedAt'])
-        : DateTime.parse(map['updatedAt']),
+        ? DateTime.tryParse(map['deviceUpdatedAt'].toString()) ??
+            DateTime.tryParse((map['updatedAt'] ?? '').toString()) ??
+            DateTime.now()
+        : DateTime.tryParse((map['updatedAt'] ?? '').toString()) ??
+            DateTime.now(),
     isDeleted: map['isDeleted'] ?? false,
   );
 }

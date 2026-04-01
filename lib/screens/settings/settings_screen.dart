@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/app_settings_provider.dart';
+import '../../providers/alarm_history_provider.dart';
 import '../../providers/note_folders_provider.dart';
 import '../../providers/notes_provider.dart';
 import '../../providers/stickies_provider.dart';
@@ -40,10 +41,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
     final user = ref.watch(authStateProvider).valueOrNull;
-    final notesCount = ref.watch(notesProvider).length;
+    final notes = ref.watch(notesProvider);
+    final notesCount = notes.length;
     final foldersCount = ref.watch(noteFoldersProvider).length;
     final stickiesCount = ref.watch(stickiesProvider).length;
-    final boardsCount = ref.watch(stickyBoardsProvider).length;
+    final boards = ref.watch(stickyBoardsProvider);
+    final boardsCount = boards.length;
+    final history = ref.watch(alarmHistoryProvider);
+    final orphanedNotes = notes
+        .where(
+          (note) =>
+              note.folderId == null &&
+              note.tags.isEmpty &&
+              DateTime.now().difference(note.updatedAt).inDays >= 180,
+        )
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -99,6 +111,90 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   return _SettingsTimerChip(seconds: seconds);
                 }).toList(),
               ),
+              const SizedBox(height: 16),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: settings.awakeCheckEnabled,
+                onChanged: (value) => ref
+                    .read(appSettingsProvider.notifier)
+                    .setAwakeCheckEnabled(value),
+                title: const Text('Awake Check follow-up'),
+                subtitle: const Text(
+                  'Prepare a follow-up wakefulness check after a successful dismissal.',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [5, 10, 15].map((minutes) {
+                  final selected =
+                      settings.awakeCheckDelayMinutes == minutes;
+                  return InkWell(
+                    onTap: () => ref
+                        .read(appSettingsProvider.notifier)
+                        .setAwakeCheckDelayMinutes(minutes),
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppTheme.primary
+                            : AppTheme.surfaceHigh,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '$minutes min delay',
+                        style: TextStyle(
+                          color: selected
+                              ? Colors.black
+                              : AppTheme.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [1, 2, 3].map((minutes) {
+                  final selected =
+                      settings.awakeCheckWindowMinutes == minutes;
+                  return InkWell(
+                    onTap: () => ref
+                        .read(appSettingsProvider.notifier)
+                        .setAwakeCheckWindowMinutes(minutes),
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppTheme.primary
+                            : AppTheme.surfaceHigh,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '$minutes min window',
+                        style: TextStyle(
+                          color: selected
+                              ? Colors.black
+                              : AppTheme.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -114,6 +210,51 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 title: const Text('Collapse note tools by default'),
                 subtitle: const Text(
                   'Keeps the note editor cleaner and easier to use on smaller screens.',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppTheme.background,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Orphaned notes finder',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      orphanedNotes.isEmpty
+                          ? 'No orphaned notes right now.'
+                          : '${orphanedNotes.length} notes have no folder, no tags, and have not been edited in over 6 months.',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        height: 1.45,
+                      ),
+                    ),
+                    if (orphanedNotes.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      ...orphanedNotes.take(5).map(
+                        (note) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text(
+                            '- ${note.title}',
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
@@ -140,6 +281,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   color: AppTheme.textSecondary,
                   height: 1.45,
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: 'Sticky capture',
+            children: [
+              DropdownButtonFormField<String?>(
+                value: settings.defaultStickyBoardId,
+                decoration: const InputDecoration(
+                  labelText: 'Default board for "Send to board"',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('No default board'),
+                  ),
+                  ...boards.map(
+                    (board) => DropdownMenuItem<String?>(
+                      value: board.id,
+                      child: Text(board.name),
+                    ),
+                  ),
+                ],
+                onChanged: (value) => ref
+                    .read(appSettingsProvider.notifier)
+                    .setDefaultStickyBoardId(value),
               ),
             ],
           ),
@@ -174,6 +343,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     label: const Text('Open Stickies'),
                   ),
                 ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: 'Alarm analytics',
+            children: [
+              _StatusRow(
+                label: 'Logged alarm events',
+                value: '${history.length}',
+              ),
+              const SizedBox(height: 10),
+              _StatusRow(
+                label: 'Missed alarms',
+                value:
+                    '${history.where((entry) => entry.event == 'missed').length}',
               ),
             ],
           ),

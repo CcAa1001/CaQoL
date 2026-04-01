@@ -13,11 +13,17 @@ class NoteFoldersService {
   Box<Map> get _box => Hive.box<Map>(_boxName);
 
   List<NoteFolder> getAll({bool includeDeleted = false}) {
-    return _box.values
-        .map((e) => NoteFolder.fromMap(Map<String, dynamic>.from(e)))
-        .where((folder) => includeDeleted || !folder.isDeleted)
-        .toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final folders = <NoteFolder>[];
+    for (final raw in _box.values) {
+      try {
+        final folder = NoteFolder.fromMap(Map<String, dynamic>.from(raw));
+        if (includeDeleted || !folder.isDeleted) {
+          folders.add(folder);
+        }
+      } catch (_) {}
+    }
+    folders.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return folders;
   }
 
   NoteFolder? getById(String id) {
@@ -25,7 +31,11 @@ class NoteFoldersService {
     if (raw == null) {
       return null;
     }
-    return NoteFolder.fromMap(Map<String, dynamic>.from(raw));
+    try {
+      return NoteFolder.fromMap(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> save(NoteFolder folder) async {

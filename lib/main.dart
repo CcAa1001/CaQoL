@@ -10,7 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firebase_options.dart';
 import 'models/alarm.dart';
+import 'models/awake_check_entry.dart';
 import 'screens/alarm/alarm_screen.dart';
+import 'screens/alarm/awake_check_screen.dart';
 import 'screens/alarm/alarm_trigger_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/notes/notes_screen.dart';
@@ -19,6 +21,7 @@ import 'services/alarm_history_service.dart';
 import 'services/alarm_service.dart';
 import 'services/app_settings_service.dart';
 import 'services/auth_service.dart';
+import 'services/awake_check_service.dart';
 import 'services/note_folders_service.dart';
 import 'services/notes_service.dart';
 import 'services/sticky_boards_service.dart';
@@ -39,6 +42,7 @@ void main() async {
   await StickyBoardsService().init();
   await StickiesService().init();
   await AppSettingsService().init();
+  await AwakeCheckService().init();
   await AlarmHistoryService().init();
   await AlarmService().init();
   if (defaultTargetPlatform == TargetPlatform.android) {
@@ -93,6 +97,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _handleAlarmRing(AlarmSettings alarmSettings) async {
     final alarm = AlarmService().findByPlatformId(alarmSettings.id);
     if (alarm == null) {
+      final awakeCheck = AwakeCheckService().findByPlatformId(alarmSettings.id);
+      if (awakeCheck != null) {
+        await _openAwakeCheck(awakeCheck);
+      }
       return;
     }
     await AlarmHistoryService().log(alarm, 'triggered');
@@ -107,6 +115,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       );
       if (isRinging) {
         await _openAlarmTrigger(alarm);
+        return;
+      }
+    }
+    final awakeChecks = AwakeCheckService().getAll();
+    for (final entry in awakeChecks) {
+      final isRinging = await Alarm.isRinging(
+        AwakeCheckService().platformAlarmId(entry.id),
+      );
+      if (isRinging) {
+        await _openAwakeCheck(entry);
         return;
       }
     }
@@ -131,6 +149,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       (route) => route.isFirst,
     );
     _openAlarmId = null;
+  }
+
+  Future<void> _openAwakeCheck(AwakeCheckEntry entry) async {
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openAwakeCheck(entry);
+      });
+      return;
+    }
+
+    await navigator.push(
+      MaterialPageRoute(builder: (_) => AwakeCheckScreen(entry: entry)),
+    );
   }
 
   @override

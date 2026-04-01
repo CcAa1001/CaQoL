@@ -11,10 +11,18 @@ class StickiesService {
   Box<Map> get _box => Hive.box<Map>(_boxName);
 
   List<Sticky> getAll({bool includeDeleted = false}) {
-    return _box.values
-        .map((e) => Sticky.fromMap(Map<String, dynamic>.from(e)))
-        .where((sticky) => includeDeleted || !sticky.isDeleted)
-        .toList()
+    final stickies = <Sticky>[];
+    for (final raw in _box.values) {
+      try {
+        final sticky = Sticky.fromMap(Map<String, dynamic>.from(raw));
+        if (includeDeleted || !sticky.isDeleted) {
+          stickies.add(sticky);
+        }
+      } catch (_) {
+        // Skip corrupt legacy entries instead of breaking the whole board.
+      }
+    }
+    return stickies
       ..sort((a, b) {
         if (a.isPinned != b.isPinned) {
           return a.isPinned ? -1 : 1;
@@ -32,7 +40,11 @@ class StickiesService {
     if (raw == null) {
       return null;
     }
-    return Sticky.fromMap(Map<String, dynamic>.from(raw));
+    try {
+      return Sticky.fromMap(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> save(Sticky sticky) async {
