@@ -35,8 +35,19 @@ class NotesNotifier extends StateNotifier<List<Note>> {
     }
     await _cloudSync.pushLocalSnapshot(_service.getAll(includeDeleted: true));
     _cloudSubscription = _cloudSync.watch().listen((remoteNotes) async {
-      await _service.saveAll(remoteNotes);
-      _load();
+      final locals = _service.getAll(includeDeleted: true);
+      final localById = {for (var n in locals) n.id: n};
+      final toSave = <Note>[];
+      for (final remote in remoteNotes) {
+        final local = localById[remote.id];
+        if (local == null || remote.deviceUpdatedAt.isAfter(local.deviceUpdatedAt)) {
+          toSave.add(remote);
+        }
+      }
+      if (toSave.isNotEmpty) {
+        await _service.saveAll(toSave);
+        _load();
+      }
     });
   }
 
@@ -44,7 +55,7 @@ class NotesNotifier extends StateNotifier<List<Note>> {
     state = _service.getAll();
   }
 
-  Future<void> add(
+  Future<Note> add(
     String title,
     String body, {
     String? folderId,
@@ -68,6 +79,7 @@ class NotesNotifier extends StateNotifier<List<Note>> {
     if (isCloudEnabled) {
       unawaited(_cloudSync.save(note));
     }
+    return note;
   }
 
   Future<void> update(Note note) async {

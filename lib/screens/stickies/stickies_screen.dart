@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/note.dart';
@@ -305,7 +305,17 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
                           )
                         : LayoutBuilder(
                             builder: (context, constraints) {
-                              final cardWidth = (constraints.maxWidth - 34) / 2;
+                              int columns = 2;
+                              if (constraints.maxWidth >= 1200) {
+                                columns = 5;
+                              } else if (constraints.maxWidth >= 900) {
+                                columns = 4;
+                              } else if (constraints.maxWidth >= 600) {
+                                columns = 3;
+                              }
+                              final totalSpacing = 24 + ((columns - 1) * 10);
+                              final cardWidth = (constraints.maxWidth - totalSpacing) / columns;
+                              
                               return SingleChildScrollView(
                                 padding: const EdgeInsets.all(12),
                                 child: Wrap(

@@ -14,32 +14,40 @@ class AlarmService {
   Box<Map> get _box => Hive.box<Map>(_boxName);
 
   List<AlarmModel> getAll() {
-    return _box.values
-        .map((e) => AlarmModel.fromMap(Map<String, dynamic>.from(e)))
-        .toList()
-      ..sort((a, b) {
-        final aMin = a.hour * 60 + a.minute;
-        final bMin = b.hour * 60 + b.minute;
-        return aMin.compareTo(bMin);
-      });
+    final alarms = <AlarmModel>[];
+    for (final raw in _box.values) {
+      try {
+        alarms.add(AlarmModel.fromMap(Map<String, dynamic>.from(raw)));
+      } catch (_) {
+        // Skip corrupt legacy entries instead of breaking the alarm list.
+      }
+    }
+    alarms.sort((a, b) {
+      final aMin = a.hour * 60 + a.minute;
+      final bMin = b.hour * 60 + b.minute;
+      return aMin.compareTo(bMin);
+    });
+    return alarms;
   }
 
   AlarmModel? getById(String id) {
     final raw = _box.get(id);
     if (raw == null) return null;
-    return AlarmModel.fromMap(Map<String, dynamic>.from(raw));
+    try {
+      return AlarmModel.fromMap(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
+    }
   }
 
   AlarmModel? findByPlatformId(int platformId) {
     for (final alarm in getAll()) {
-      if (platformAlarmId(alarm.id) == platformId) {
+      if (alarm.platformId == platformId) {
         return alarm;
       }
     }
     return null;
   }
-
-  int platformAlarmId(String id) => id.hashCode.abs() % 2147483647;
 
   bool repeats(AlarmModel alarm) => alarm.repeatDays.any((day) => day);
 
@@ -83,7 +91,7 @@ class AlarmService {
 
     await Alarm.set(
       alarmSettings: AlarmSettings(
-        id: platformAlarmId(alarm.id),
+        id: alarm.platformId,
         dateTime: scheduledAt,
         assetAudioPath: alarm.soundPath,
         loopAudio: true,
@@ -103,7 +111,7 @@ class AlarmService {
 
   Future<void> cancel(AlarmModel alarm) async {
     if (defaultTargetPlatform != TargetPlatform.android) return;
-    await Alarm.stop(platformAlarmId(alarm.id));
+    await Alarm.stop(alarm.platformId);
   }
 
   Future<void> save(AlarmModel alarm) async {

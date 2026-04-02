@@ -39,8 +39,19 @@ class StickyBoardsNotifier extends StateNotifier<List<StickyBoard>> {
 
     await _cloudSync.pushLocalSnapshot(_service.getAll(includeDeleted: true));
     _cloudSubscription = _cloudSync.watch().listen((remoteBoards) async {
-      await _service.saveAll(remoteBoards);
-      _load();
+      final locals = _service.getAll(includeDeleted: true);
+      final localById = {for (var b in locals) b.id: b};
+      final toSave = <StickyBoard>[];
+      for (final remote in remoteBoards) {
+        final local = localById[remote.id];
+        if (local == null || remote.deviceUpdatedAt.isAfter(local.deviceUpdatedAt)) {
+          toSave.add(remote);
+        }
+      }
+      if (toSave.isNotEmpty) {
+        await _service.saveAll(toSave);
+        _load();
+      }
     });
   }
 

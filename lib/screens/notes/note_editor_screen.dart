@@ -10,11 +10,20 @@ import '../../providers/note_folders_provider.dart';
 import '../../providers/notes_provider.dart';
 import '../../providers/stickies_provider.dart';
 import '../../services/note_links_service.dart';
+import '../../theme/app_theme.dart';
 
 class NoteEditorScreen extends ConsumerStatefulWidget {
   final Note? note;
   final String? initialFolderId;
-  const NoteEditorScreen({super.key, this.note, this.initialFolderId});
+  final bool isEmbedded;
+  final ValueChanged<String>? onSaved;
+  const NoteEditorScreen({
+    super.key,
+    this.note,
+    this.initialFolderId,
+    this.isEmbedded = false,
+    this.onSaved,
+  });
 
   @override
   ConsumerState<NoteEditorScreen> createState() => _NoteEditorScreenState();
@@ -36,6 +45,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   bool _showReferences = false;
   bool _showComments = false;
   bool _showAttachments = false;
+  bool _focusMode = false;
   final _searchCtrl = TextEditingController();
   final _bodyFocusNode = FocusNode();
   int _searchIndex = -1;
@@ -67,7 +77,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     super.dispose();
   }
 
-  void _saveAndPop() {
+  Future<void> _saveAndPop() async {
     final title = _titleCtrl.text;
     final body = _bodyCtrl.text;
     final tags = _tagsCtrl.text
@@ -77,32 +87,51 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         .toSet()
         .toList();
 
+    String? savedNoteId;
     if (title.isNotEmpty || body.isNotEmpty) {
       final notifier = ref.read(notesProvider.notifier);
       if (widget.note == null) {
-        notifier.add(
+        final created = await notifier.add(
           title,
           body,
           folderId: _selectedFolderId,
           isFavorite: _isFavorite,
           tags: tags,
         );
+        savedNoteId = created.id;
       } else {
         final current = _findActiveNote(ref.read(notesProvider)) ?? widget.note!;
-        notifier.update(
-          current.copyWith(
-            title: title,
-            body: body,
-            folderId: _selectedFolderId,
-            clearFolderId: _selectedFolderId == null,
-            isFavorite: _isFavorite,
-            tags: tags,
-          ),
+        final updated = current.copyWith(
+          title: title,
+          body: body,
+          folderId: _selectedFolderId,
+          clearFolderId: _selectedFolderId == null,
+          isFavorite: _isFavorite,
+          tags: tags,
         );
+        await notifier.update(
+          updated,
+        );
+        savedNoteId = updated.id;
       }
+    } else if (widget.note != null) {
+      savedNoteId = widget.note!.id;
     }
 
-    Navigator.pop(context);
+    if (savedNoteId != null) {
+      widget.onSaved?.call(savedNoteId);
+    }
+
+    if (widget.isEmbedded) {
+      if (mounted) {
+        FocusScope.of(context).unfocus();
+      }
+      return;
+    }
+
+    if (mounted) {
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -117,6 +146,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         : _linksService.backlinksFor(currentNote, notes);
     final comments = activeNote?.comments ?? const <NoteComment>[];
     final attachments = activeNote?.attachments ?? const <NoteAttachment>[];
+    final focusWidth = (!kIsWeb && MediaQuery.of(context).size.width < 700)
+        ? double.infinity
+        : 760.0;
 
     return PopScope(
       canPop: false,
@@ -126,12 +158,26 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       child: Scaffold(
         resizeToAvoidBottomInset: true,
         appBar: AppBar(
-          title: Text(widget.note == null ? 'New Note' : 'Edit Note'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _saveAndPop,
+          title: Text(
+            _focusMode
+                ? (widget.note == null ? 'Draft Mode' : 'Focus Mode')
+                : (widget.note == null ? 'New Note' : 'Edit Note'),
           ),
+          automaticallyImplyLeading: !widget.isEmbedded,
+          leading: widget.isEmbedded
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _saveAndPop,
+                ),
           actions: [
+            IconButton(
+              icon: Icon(
+                _focusMode ? Icons.center_focus_strong : Icons.article_outlined,
+              ),
+              tooltip: _focusMode ? 'Exit focus mode' : 'Enter focus mode',
+              onPressed: () => setState(() => _focusMode = !_focusMode),
+            ),
             IconButton(
               icon: Icon(
                 _previewMode ? Icons.edit_outlined : Icons.visibility_outlined,
@@ -177,9 +223,12 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                 child: SingleChildScrollView(
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.manual,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: focusWidth),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                       TextField(
                         controller: _titleCtrl,
                         style: const TextStyle(
@@ -193,14 +242,29 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        _metaLine(activeNote),
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _metaLine(activeNote),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          if (_focusMode)
+                            Text(
+                              _draftStats(),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                        ],
                       ),
-                      if (_searchCtrl.text.trim().isNotEmpty) ...[
+                      if (!_focusMode && _searchCtrl.text.trim().isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text(
                           _searchMatches.isEmpty
@@ -213,9 +277,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         ),
                       ],
                       const SizedBox(height: 18),
-                      if (_selectedFolderId != null ||
+                      if (!_focusMode &&
+                          (_selectedFolderId != null ||
                           _tagsCtrl.text.trim().isNotEmpty ||
-                          _isFavorite) ...[
+                          _isFavorite)) ...[
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
@@ -292,7 +357,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                               ),
                       ),
                       const SizedBox(height: 20),
-                      if (linkedNotes.isNotEmpty)
+                      if (!_focusMode && linkedNotes.isNotEmpty)
                         _InlineSection(
                           title: 'Linked notes',
                           child: _LinkSection(
@@ -301,14 +366,14 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                             notes: notes,
                           ),
                         ),
-                      if (backlinks.isNotEmpty) ...[
+                      if (!_focusMode && backlinks.isNotEmpty) ...[
                         const SizedBox(height: 16),
                         _InlineSection(
                           title: 'Linked from',
                           child: _BacklinkSection(notes: backlinks),
                         ),
                       ],
-                      if (comments.isNotEmpty) ...[
+                      if (!_focusMode && comments.isNotEmpty) ...[
                         const SizedBox(height: 16),
                         _InlineSection(
                           title: 'Comments',
@@ -324,7 +389,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                           ),
                         ),
                       ],
-                      if (attachments.isNotEmpty) ...[
+                      if (!_focusMode && attachments.isNotEmpty) ...[
                         const SizedBox(height: 16),
                         _InlineSection(
                           title: 'Attachments',
@@ -341,11 +406,46 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         ),
                       ],
                       const SizedBox(height: 80),
-                    ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
+            if (_focusMode)
+              SafeArea(
+                top: false,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: focusWidth),
+                      child: Row(
+                        children: [
+                          Text(
+                            _draftStats(),
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'Distraction-free drafting',
+                            style: TextStyle(
+                              color: AppTheme.textTertiary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (_bodyFocusNode.hasFocus && !_previewMode)
               SafeArea(
                 top: false,
@@ -395,6 +495,13 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         .map((tag) => tag.trim())
         .where((tag) => tag.isNotEmpty)
         .toList();
+  }
+
+  String _draftStats() {
+    final text = '${_titleCtrl.text}\n${_bodyCtrl.text}'.trim();
+    final words = RegExp(r'\S+').allMatches(text).length;
+    final characters = text.characters.length;
+    return '$words words | $characters chars';
   }
 
   String? _folderNameForId(List<NoteFolder> folders, String id) {

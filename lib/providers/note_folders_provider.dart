@@ -40,8 +40,19 @@ class NoteFoldersNotifier extends StateNotifier<List<NoteFolder>> {
     }
     await _cloudSync.pushLocalSnapshot(_service.getAll(includeDeleted: true));
     _cloudSubscription = _cloudSync.watch().listen((remoteFolders) async {
-      await _service.saveAll(remoteFolders);
-      _load();
+      final locals = _service.getAll(includeDeleted: true);
+      final localById = {for (var f in locals) f.id: f};
+      final toSave = <NoteFolder>[];
+      for (final remote in remoteFolders) {
+        final local = localById[remote.id];
+        if (local == null || remote.deviceUpdatedAt.isAfter(local.deviceUpdatedAt)) {
+          toSave.add(remote);
+        }
+      }
+      if (toSave.isNotEmpty) {
+        await _service.saveAll(toSave);
+        _load();
+      }
     });
   }
 

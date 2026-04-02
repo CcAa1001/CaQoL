@@ -40,14 +40,12 @@ class AwakeCheckService {
 
   AwakeCheckEntry? findByPlatformId(int platformId) {
     for (final entry in getAll(includeCompleted: true)) {
-      if (platformAlarmId(entry.id) == platformId) {
+      if (entry.platformId == platformId) {
         return entry;
       }
     }
     return null;
   }
-
-  int platformAlarmId(String id) => id.hashCode.abs() % 2147483647;
 
   Future<AwakeCheckEntry> createFor(
     AlarmModel alarm, {
@@ -57,6 +55,7 @@ class AwakeCheckService {
     final now = DateTime.now();
     final entry = AwakeCheckEntry(
       id: 'awake_${now.microsecondsSinceEpoch}_${alarm.id}',
+      platformId: now.microsecondsSinceEpoch % 2147483647,
       alarmId: alarm.id,
       alarmLabel: alarm.label.isEmpty ? 'Alarm ${alarm.timeString}' : alarm.label,
       noteId: alarm.noteId,
@@ -75,7 +74,7 @@ class AwakeCheckService {
     }
     await Alarm.set(
       alarmSettings: AlarmSettings(
-        id: platformAlarmId(entry.id),
+        id: entry.platformId,
         dateTime: entry.scheduledAt,
         assetAudioPath: 'assets/alarm.mp3',
         loopAudio: false,
@@ -97,7 +96,7 @@ class AwakeCheckService {
     if (defaultTargetPlatform != TargetPlatform.android) {
       return;
     }
-    await Alarm.stop(platformAlarmId(entry.id));
+    await Alarm.stop(entry.platformId);
   }
 
   Future<void> save(AwakeCheckEntry entry) async {

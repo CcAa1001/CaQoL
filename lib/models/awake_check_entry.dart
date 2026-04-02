@@ -1,5 +1,6 @@
 class AwakeCheckEntry {
   final String id;
+  final int platformId;
   final String alarmId;
   final String alarmLabel;
   final String? noteId;
@@ -10,6 +11,7 @@ class AwakeCheckEntry {
 
   const AwakeCheckEntry({
     required this.id,
+    required this.platformId,
     required this.alarmId,
     required this.alarmLabel,
     this.noteId,
@@ -20,6 +22,7 @@ class AwakeCheckEntry {
   });
 
   AwakeCheckEntry copyWith({
+    int? platformId,
     String? alarmLabel,
     String? noteId,
     bool? acknowledged,
@@ -29,6 +32,7 @@ class AwakeCheckEntry {
   }) {
     return AwakeCheckEntry(
       id: id,
+      platformId: platformId ?? this.platformId,
       alarmId: alarmId,
       alarmLabel: alarmLabel ?? this.alarmLabel,
       noteId: noteId ?? this.noteId,
@@ -41,6 +45,7 @@ class AwakeCheckEntry {
 
   Map<String, dynamic> toMap() => {
         'id': id,
+        'platformId': platformId,
         'alarmId': alarmId,
         'alarmLabel': alarmLabel,
         'noteId': noteId,
@@ -53,6 +58,7 @@ class AwakeCheckEntry {
   factory AwakeCheckEntry.fromMap(Map<String, dynamic> map) {
     return AwakeCheckEntry(
       id: (map['id'] ?? '').toString(),
+      platformId: map['platformId'] ?? (map['id'] ?? '').hashCode.abs() % 2147483647,
       alarmId: (map['alarmId'] ?? '').toString(),
       alarmLabel: (map['alarmLabel'] ?? 'Awake Check').toString(),
       noteId: map['noteId']?.toString(),

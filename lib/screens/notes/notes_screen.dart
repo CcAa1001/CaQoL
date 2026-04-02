@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/note.dart';
@@ -28,14 +29,34 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
   final _importService = NoteImportService();
   final _linksService = NoteLinksService();
   String? _currentFolderId;
+  String? _selectedNoteId;
+  bool _isCreatingNote = false;
   String? _selectedTag;
   _NotesFilter _filter = _NotesFilter.all;
   bool _showFilters = false;
+  final _searchFocusNode = FocusNode();
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _createNewNote(bool isWide) {
+    if (isWide) {
+      setState(() {
+        _isCreatingNote = true;
+        _selectedNoteId = null;
+      });
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NoteEditorScreen(initialFolderId: _currentFolderId),
+        ),
+      );
+    }
   }
 
   @override
@@ -66,7 +87,18 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
       return note.folderId == _currentFolderId;
     }).toList();
 
-    return Scaffold(
+    final isWide = MediaQuery.of(context).size.width > 800;
+
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true): () => _searchFocusNode.requestFocus(),
+        const SingleActivator(LogicalKeyboardKey.keyF, meta: true): () => _searchFocusNode.requestFocus(),
+        const SingleActivator(LogicalKeyboardKey.keyN, control: true): () => _createNewNote(isWide),
+        const SingleActivator(LogicalKeyboardKey.keyN, meta: true): () => _createNewNote(isWide),
+      },
+      child: FocusScope(
+        autofocus: true,
+        child: Scaffold(
       appBar: AppBar(
         title: Text(currentFolder?.name ?? 'Notes'),
         actions: [
@@ -103,14 +135,18 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth > 800;
+          final content = Column(
+            children: [
+              Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Column(
               children: [
                 TextField(
                   controller: _searchCtrl,
+                  focusNode: _searchFocusNode,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     hintText: 'Search notes and folders...',
@@ -282,12 +318,21 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
                               previewText: _linksService.plainText(note.body),
                               tags: note.tags,
                               pathLabel: query.isEmpty ? null : _notePath(note, folders),
-                              onOpen: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => NoteEditorScreen(note: note),
-                                ),
-                              ),
+                              onOpen: () {
+                                if (isWide) {
+                                  setState(() {
+                                    _selectedNoteId = note.id;
+                                    _isCreatingNote = false;
+                                  });
+                                } else {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => NoteEditorScreen(note: note),
+                                    ),
+                                  );
+                                }
+                              },
                               onFavorite: () =>
                                   ref.read(notesProvider.notifier).toggleFavorite(note.id),
                               onDelete: () =>
@@ -300,16 +345,75 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
                   ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => NoteEditorScreen(initialFolderId: _currentFolderId),
+      );
+
+      if (!isWide) return content;
+
+      Note? selectedNote;
+      if (_selectedNoteId != null) {
+        for (final n in notes) {
+          if (n.id == _selectedNoteId) {
+            selectedNote = n;
+            break;
+          }
+        }
+      }
+
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 320,
+            child: content,
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(
+            child: _isCreatingNote
+                ? NoteEditorScreen(
+                    key: const ValueKey('embedded-new-note'),
+                    initialFolderId: _currentFolderId,
+                    isEmbedded: true,
+                    onSaved: (id) {
+                      if (!mounted) return;
+                      setState(() {
+                        _selectedNoteId = id;
+                        _isCreatingNote = false;
+                      });
+                    },
+                  )
+                : _selectedNoteId == null || selectedNote == null
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.edit_note_rounded, size: 64, color: AppTheme.textTertiary),
+                        SizedBox(height: 16),
+                        Text('Select a note or folder', style: TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
+                      ],
+                    ),
+                  )
+                : NoteEditorScreen(
+                    key: ValueKey(_selectedNoteId),
+                    note: selectedNote,
+                    isEmbedded: true,
+                    onSaved: (id) {
+                      if (!mounted) return;
+                      setState(() {
+                        _selectedNoteId = id;
+                        _isCreatingNote = false;
+                      });
+                    },
+                  ),
+          ),
+        ],
+      );
+    }),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _createNewNote(isWide),
+            icon: const Icon(Icons.note_add_outlined),
+            label: const Text('New note'),
           ),
         ),
-        icon: const Icon(Icons.note_add_outlined),
-        label: const Text('New note'),
       ),
     );
   }

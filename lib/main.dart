@@ -11,11 +11,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'firebase_options.dart';
 import 'models/alarm.dart';
 import 'models/awake_check_entry.dart';
+import 'models/note.dart';
+import 'models/note_folder.dart';
+import 'models/sticky.dart';
+import 'models/sticky_board.dart';
+import 'providers/note_folders_provider.dart';
+import 'providers/notes_provider.dart';
+import 'providers/stickies_provider.dart';
+import 'providers/sticky_boards_provider.dart';
 import 'screens/alarm/alarm_screen.dart';
 import 'screens/alarm/awake_check_screen.dart';
 import 'screens/alarm/alarm_trigger_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/notes/notes_screen.dart';
+import 'screens/notes/note_editor_screen.dart';
 import 'screens/stickies/stickies_screen.dart';
 import 'services/alarm_history_service.dart';
 import 'services/alarm_service.dart';
@@ -111,7 +120,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final service = AlarmService();
     for (final alarm in service.getAll()) {
       final isRinging = await Alarm.isRinging(
-        service.platformAlarmId(alarm.id),
+        alarm.platformId,
       );
       if (isRinging) {
         await _openAlarmTrigger(alarm);
@@ -121,7 +130,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final awakeChecks = AwakeCheckService().getAll();
     for (final entry in awakeChecks) {
       final isRinging = await Alarm.isRinging(
-        AwakeCheckService().platformAlarmId(entry.id),
+        entry.platformId,
       );
       if (isRinging) {
         await _openAwakeCheck(entry);
@@ -235,53 +244,393 @@ class AuthGate extends ConsumerWidget {
   }
 }
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
+  List<Widget> _screens = [];
+  List<NavigationDestination> _destinations = [];
+  final _homeShortcutsNode = FocusNode();
 
-  Widget _buildCurrentScreen() {
-    switch (_currentIndex) {
-      case 0:
-        return const AlarmScreen();
-      case 1:
-        return const NotesScreen();
-      case 2:
-        return const StickiesScreen();
-      default:
-        return const AlarmScreen();
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      _screens = const [NotesScreen(), StickiesScreen()];
+      _destinations = const [
+        NavigationDestination(
+          icon: Icon(Icons.edit_note_outlined),
+          selectedIcon: Icon(Icons.edit_note),
+          label: 'Notes',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.sticky_note_2_outlined),
+          selectedIcon: Icon(Icons.sticky_note_2),
+          label: 'Stickies',
+        ),
+      ];
+    } else {
+      _screens = const [AlarmScreen(), NotesScreen(), StickiesScreen()];
+      _destinations = const [
+        NavigationDestination(
+          icon: Icon(Icons.alarm_outlined),
+          selectedIcon: Icon(Icons.alarm),
+          label: 'Alarm',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.edit_note_outlined),
+          selectedIcon: Icon(Icons.edit_note),
+          label: 'Notes',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.sticky_note_2_outlined),
+          selectedIcon: Icon(Icons.sticky_note_2),
+          label: 'Stickies',
+        ),
+      ];
     }
   }
 
   @override
+  void dispose() {
+    _homeShortcutsNode.dispose();
+    super.dispose();
+  }
+
+  int get _notesTabIndex => kIsWeb ? 0 : 1;
+  int get _stickiesTabIndex => kIsWeb ? 1 : 2;
+
+  Future<void> _openCommandPalette() async {
+    final notes = ref.read(notesProvider);
+    final folders = ref.read(noteFoldersProvider);
+    final stickies = ref.read(stickiesProvider);
+    final boards = ref.read(stickyBoardsProvider);
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (context) => _CommandPaletteDialog(
+        notes: notes,
+        folders: folders,
+        stickies: stickies,
+        boards: boards,
+        showAlarmTab: !kIsWeb,
+        onOpenAlarm: () => setState(() => _currentIndex = 0),
+        onOpenNotes: () => setState(() => _currentIndex = _notesTabIndex),
+        onOpenStickies: () => setState(() => _currentIndex = _stickiesTabIndex),
+        onNewNote: () {
+          setState(() => _currentIndex = _notesTabIndex);
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const NoteEditorScreen()),
+          );
+        },
+        onOpenNote: (note) {
+          setState(() => _currentIndex = _notesTabIndex);
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => NoteEditorScreen(note: note)),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _buildCurrentScreen(),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (i) => setState(() => _currentIndex = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.alarm_outlined),
-            selectedIcon: Icon(Icons.alarm),
-            label: 'Alarm',
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyK, control: true): _openCommandPalette,
+        const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _openCommandPalette,
+      },
+      child: Focus(
+        autofocus: true,
+        focusNode: _homeShortcutsNode,
+        child: Scaffold(
+          body: _screens[_currentIndex],
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _currentIndex,
+            onDestinationSelected: (i) => setState(() => _currentIndex = i),
+            destinations: _destinations,
           ),
-          NavigationDestination(
-            icon: Icon(Icons.edit_note_outlined),
-            selectedIcon: Icon(Icons.edit_note),
-            label: 'Notes',
+        ),
+      ),
+    );
+  }
+}
+
+class _CommandPaletteDialog extends StatefulWidget {
+  const _CommandPaletteDialog({
+    required this.notes,
+    required this.folders,
+    required this.stickies,
+    required this.boards,
+    required this.showAlarmTab,
+    required this.onOpenAlarm,
+    required this.onOpenNotes,
+    required this.onOpenStickies,
+    required this.onNewNote,
+    required this.onOpenNote,
+  });
+
+  final List<Note> notes;
+  final List<NoteFolder> folders;
+  final List<Sticky> stickies;
+  final List<StickyBoard> boards;
+  final bool showAlarmTab;
+  final VoidCallback onOpenAlarm;
+  final VoidCallback onOpenNotes;
+  final VoidCallback onOpenStickies;
+  final VoidCallback onNewNote;
+  final ValueChanged<Note> onOpenNote;
+
+  @override
+  State<_CommandPaletteDialog> createState() => _CommandPaletteDialogState();
+}
+
+class _CommandPaletteDialogState extends State<_CommandPaletteDialog> {
+  final _queryCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _queryCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _queryCtrl.text.trim().toLowerCase();
+    final noteMatches = widget.notes
+        .where((note) =>
+            query.isEmpty ||
+            note.title.toLowerCase().contains(query) ||
+            note.body.toLowerCase().contains(query) ||
+            note.tags.any((tag) => tag.toLowerCase().contains(query)))
+        .take(8)
+        .toList();
+    final folderMatches = widget.folders
+        .where((folder) => query.isEmpty || folder.name.toLowerCase().contains(query))
+        .take(5)
+        .toList();
+    final stickyMatches = widget.stickies
+        .where((sticky) =>
+            query.isEmpty ||
+            sticky.title.toLowerCase().contains(query) ||
+            sticky.body.toLowerCase().contains(query))
+        .take(5)
+        .toList();
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+      backgroundColor: AppTheme.surface,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760, maxHeight: 620),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _queryCtrl,
+                autofocus: true,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  hintText: 'Type a command, note title, folder, or sticky...',
+                  prefixIcon: Icon(Icons.search),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (widget.showAlarmTab)
+                    _CommandChip(
+                      label: 'Go to Alarm',
+                      icon: Icons.alarm,
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onOpenAlarm();
+                      },
+                    ),
+                  _CommandChip(
+                    label: 'Go to Notes',
+                    icon: Icons.edit_note,
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onOpenNotes();
+                    },
+                  ),
+                  _CommandChip(
+                    label: 'Go to Stickies',
+                    icon: Icons.sticky_note_2,
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onOpenStickies();
+                    },
+                  ),
+                  _CommandChip(
+                    label: 'New note',
+                    icon: Icons.note_add_outlined,
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onNewNote();
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: ListView(
+                  children: [
+                    if (noteMatches.isNotEmpty) ...[
+                      const _PaletteSectionTitle('Notes'),
+                      ...noteMatches.map(
+                        (note) => _PaletteTile(
+                          icon: Icons.description_outlined,
+                          title: note.title,
+                          subtitle: note.tags.isEmpty
+                              ? note.body.trim().isEmpty
+                                  ? 'No content'
+                                  : note.body.trim()
+                              : '#${note.tags.join(' #')}',
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onOpenNote(note);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (folderMatches.isNotEmpty) ...[
+                      const _PaletteSectionTitle('Folders'),
+                      ...folderMatches.map(
+                        (folder) => _PaletteTile(
+                          icon: Icons.folder_open_outlined,
+                          title: folder.name,
+                          subtitle: 'Folder',
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onOpenNotes();
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (stickyMatches.isNotEmpty) ...[
+                      const _PaletteSectionTitle('Stickies'),
+                      ...stickyMatches.map(
+                        (sticky) => _PaletteTile(
+                          icon: Icons.sticky_note_2_outlined,
+                          title: sticky.title.isEmpty ? 'Untitled sticky' : sticky.title,
+                          subtitle: sticky.body.trim().isEmpty ? 'No content' : sticky.body.trim(),
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onOpenStickies();
+                          },
+                        ),
+                      ),
+                    ],
+                    if (noteMatches.isEmpty &&
+                        folderMatches.isEmpty &&
+                        stickyMatches.isEmpty &&
+                        query.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 20),
+                        child: Text(
+                          'No matches found.',
+                          style: TextStyle(color: AppTheme.textSecondary),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.sticky_note_2_outlined),
-            selectedIcon: Icon(Icons.sticky_note_2),
-            label: 'Stickies',
+        ),
+      ),
+    );
+  }
+}
+
+class _CommandChip extends StatelessWidget {
+  const _CommandChip({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      avatar: Icon(icon, size: 16, color: AppTheme.primary),
+      label: Text(label),
+      onPressed: onTap,
+    );
+  }
+}
+
+class _PaletteSectionTitle extends StatelessWidget {
+  const _PaletteSectionTitle(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppTheme.textPrimary,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _PaletteTile extends StatelessWidget {
+  const _PaletteTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: AppTheme.background,
+        borderRadius: BorderRadius.circular(14),
+        child: ListTile(
+          onTap: onTap,
+          leading: Icon(icon, color: AppTheme.primary),
+          title: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ],
+          subtitle: Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ),
     );
   }

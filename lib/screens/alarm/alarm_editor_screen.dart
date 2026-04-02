@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
@@ -51,8 +51,10 @@ class _AlarmEditorScreenState extends ConsumerState<AlarmEditorScreen> {
   }
 
   void _save() {
+    final now = DateTime.now().millisecondsSinceEpoch;
     final alarm = AlarmModel(
-      id: widget.alarm?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: widget.alarm?.id ?? now.toString(),
+      platformId: widget.alarm?.platformId ?? now % 2147483647,
       label: _labelCtrl.text,
       soundPath: _soundPath,
       noteId: _noteId,
@@ -73,6 +75,7 @@ class _AlarmEditorScreenState extends ConsumerState<AlarmEditorScreen> {
   AlarmModel _previewAlarm() {
     return AlarmModel(
       id: widget.alarm?.id ?? 'preview',
+      platformId: widget.alarm?.platformId ?? 0,
       label: _labelCtrl.text,
       soundPath: _soundPath,
       noteId: _noteId,

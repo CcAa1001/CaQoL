@@ -1,5 +1,6 @@
-﻿import 'dart:async';
+import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -357,6 +358,15 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
           onSuccess: _dismiss,
         );
       case QuestType.qr:
+        if (kIsWeb) {
+          return Center(
+            child: ElevatedButton.icon(
+              onPressed: _dismiss,
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('QR not supported on Web - tap to dismiss'),
+            ),
+          );
+        }
         return QrQuest(
           expectedValues: widget.alarm.quest.qrOptions.isEmpty
               ? [widget.alarm.quest.qrValue]
@@ -364,6 +374,15 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
           onSuccess: _dismiss,
         );
       case QuestType.squat:
+        if (kIsWeb) {
+          return Center(
+            child: ElevatedButton.icon(
+              onPressed: _dismiss,
+              icon: const Icon(Icons.directions_walk),
+              label: const Text('Sensors not supported on Web - tap to dismiss'),
+            ),
+          );
+        }
         return SquatQuest(
           targetCount: widget.alarm.quest.squatCount,
           onSuccess: _dismiss,

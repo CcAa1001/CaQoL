@@ -35,130 +35,141 @@ class AlarmScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Alarm',
-                        style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Alarm',
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${enabledAlarms.length} active • ${alarms.length} total',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    if (user != null)
+                      GestureDetector(
+                        onTap: () => showAccountSheet(context, ref, user),
+                        child: CircleAvatar(
+                          radius: 18,
+                          backgroundColor: AppTheme.surfaceHigh,
+                          backgroundImage: user.photoURL != null
+                              ? NetworkImage(user.photoURL!)
+                              : null,
+                          child: user.photoURL == null
+                              ? Text(
+                                  (user.displayName?.trim().isNotEmpty == true
+                                          ? user.displayName!.trim()[0]
+                                          : user.email?.trim().isNotEmpty == true
+                                              ? user.email!.trim()[0]
+                                              : 'U')
+                                      .toUpperCase(),
+                                  style: const TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                )
+                              : null,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${enabledAlarms.length} active • ${alarms.length} total',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 13,
+                    if (user != null) const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AlarmEditorScreen()),
+                      ),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.primary,
+                          shape: BoxShape.circle,
                         ),
+                        child: const Icon(Icons.add, color: Colors.black, size: 22),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            const SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverToBoxAdapter(child: _AlarmReadinessCard()),
+            ),
+            if (nextAlarm != null)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                sliver: SliverToBoxAdapter(
+                  child: _NextAlarmBanner(alarm: nextAlarm),
+                ),
+              ),
+            if (allHistory.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                sliver: SliverToBoxAdapter(
+                  child: _AlarmInsightsCard(entries: allHistory),
+                ),
+              ),
+            if (history.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                sliver: SliverToBoxAdapter(
+                  child: _AlarmHistoryCard(entries: history),
+                ),
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            if (alarms.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.alarm_off, size: 48, color: AppTheme.textTertiary),
+                      SizedBox(height: 12),
+                      Text(
+                        'No alarms yet',
+                        style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Tap + to add one',
+                        style: TextStyle(color: AppTheme.textTertiary, fontSize: 13),
                       ),
                     ],
                   ),
-                  const Spacer(),
-                  if (user != null)
-                    GestureDetector(
-                      onTap: () => showAccountSheet(context, ref, user),
-                      child: CircleAvatar(
-                        radius: 18,
-                        backgroundColor: AppTheme.surfaceHigh,
-                        backgroundImage: user.photoURL != null
-                            ? NetworkImage(user.photoURL!)
-                            : null,
-                        child: user.photoURL == null
-                            ? Text(
-                                (user.displayName?.trim().isNotEmpty == true
-                                        ? user.displayName!.trim()[0]
-                                        : user.email?.trim().isNotEmpty == true
-                                            ? user.email!.trim()[0]
-                                            : 'U')
-                                    .toUpperCase(),
-                                style: const TextStyle(
-                                  color: AppTheme.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              )
-                            : null,
-                      ),
-                    ),
-                  if (user != null) const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AlarmEditorScreen()),
-                    ),
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: const BoxDecoration(
-                        color: AppTheme.primary,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.add, color: Colors.black, size: 22),
-                    ),
-                  ),
-                ],
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                sliver: SliverList.separated(
+                  itemCount: alarms.length,
+                  itemBuilder: (context, i) => _AlarmCard(alarm: alarms[i]),
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: _AlarmReadinessCard(),
-            ),
-            if (nextAlarm != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: _NextAlarmBanner(alarm: nextAlarm),
-              ),
-            if (allHistory.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: _AlarmInsightsCard(entries: allHistory),
-              ),
-            if (history.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: _AlarmHistoryCard(entries: history),
-              ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: alarms.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.alarm_off, size: 48, color: AppTheme.textTertiary),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'No alarms yet',
-                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Tap + to add one',
-                            style: TextStyle(color: AppTheme.textTertiary, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: alarms.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, i) => _AlarmCard(alarm: alarms[i]),
-                    ),
-            ),
           ],
         ),
       ),

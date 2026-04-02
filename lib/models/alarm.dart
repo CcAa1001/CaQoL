@@ -2,6 +2,7 @@ import 'quest_config.dart';
 
 class AlarmModel {
   final String id;
+  final int platformId;
   final String label;
   final String soundPath;
   final String? noteId;
@@ -13,6 +14,7 @@ class AlarmModel {
 
   AlarmModel({
     required this.id,
+    required this.platformId,
     required this.label,
     required this.soundPath,
     this.noteId,
@@ -24,6 +26,7 @@ class AlarmModel {
   });
 
   AlarmModel copyWith({
+    int? platformId,
     String? label,
     String? soundPath,
     String? noteId,
@@ -36,6 +39,7 @@ class AlarmModel {
   }) =>
       AlarmModel(
         id: id,
+        platformId: platformId ?? this.platformId,
         label: label ?? this.label,
         soundPath: soundPath ?? this.soundPath,
         noteId: clearNoteId == true ? null : noteId ?? this.noteId,
@@ -48,6 +52,7 @@ class AlarmModel {
 
   Map<String, dynamic> toMap() => {
     'id': id,
+    'platformId': platformId,
     'label': label,
     'soundPath': soundPath,
     'noteId': noteId,
@@ -60,6 +65,7 @@ class AlarmModel {
 
   factory AlarmModel.fromMap(Map<String, dynamic> map) => AlarmModel(
     id: map['id'],
+    platformId: map['platformId'] ?? map['id'].hashCode.abs() % 2147483647, // Fallback for old local alarms
     label: map['label'],
     soundPath: map['soundPath'] ?? 'assets/alarm.mp3',
     noteId: map['noteId'],

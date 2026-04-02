@@ -56,29 +56,37 @@ class NotesCloudSyncService {
 
   Future<void> pushLocalSnapshot(Iterable<Note> notes) async {
     final user = _auth.currentUser;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
     final remoteSnapshot = await _notesCollection(user.uid).get();
     final remoteById = <String, Note>{
       for (final doc in remoteSnapshot.docs) doc.id: _noteFromFirestore(doc),
     };
 
+    var batch = _firestore.batch();
+    int count = 0;
+
     for (final note in notes) {
       final remote = remoteById[note.id];
       if (remote == null ||
           note.deviceUpdatedAt.isAfter(remote.deviceUpdatedAt)) {
-        await save(note);
+        batch.set(_notesCollection(user.uid).doc(note.id), _noteToMap(note));
+        count++;
+        if (count >= 400) {
+          await batch.commit();
+          batch = _firestore.batch();
+          count = 0;
+        }
       }
+    }
+    if (count > 0) {
+      await batch.commit();
     }
   }
 
   Stream<List<Note>> watch() {
     final user = _auth.currentUser;
-    if (user == null) {
-      return const Stream.empty();
-    }
+    if (user == null) return const Stream.empty();
 
     return _notesCollection(user.uid).snapshots().map(
       (snapshot) =>
@@ -89,11 +97,13 @@ class NotesCloudSyncService {
 
   Future<void> save(Note note) async {
     final user = _auth.currentUser;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
-    await _notesCollection(user.uid).doc(note.id).set({
+    await _notesCollection(user.uid).doc(note.id).set(_noteToMap(note));
+  }
+
+  Map<String, dynamic> _noteToMap(Note note) {
+    return {
       'title': note.title,
       'body': note.body,
       'folderId': note.folderId,
@@ -106,7 +116,7 @@ class NotesCloudSyncService {
       'updatedAt': Timestamp.fromDate(note.updatedAt),
       'deviceUpdatedAt': Timestamp.fromDate(note.deviceUpdatedAt),
       'isDeleted': note.isDeleted,
-    });
+    };
   }
 
   Note _noteFromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -150,29 +160,37 @@ class NoteFoldersCloudSyncService {
 
   Future<void> pushLocalSnapshot(Iterable<NoteFolder> folders) async {
     final user = _auth.currentUser;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
     final remoteSnapshot = await _foldersCollection(user.uid).get();
     final remoteById = <String, NoteFolder>{
       for (final doc in remoteSnapshot.docs) doc.id: _folderFromFirestore(doc),
     };
 
+    var batch = _firestore.batch();
+    int count = 0;
+
     for (final folder in folders) {
       final remote = remoteById[folder.id];
       if (remote == null ||
           folder.deviceUpdatedAt.isAfter(remote.deviceUpdatedAt)) {
-        await save(folder);
+        batch.set(_foldersCollection(user.uid).doc(folder.id), _folderToMap(folder));
+        count++;
+        if (count >= 400) {
+          await batch.commit();
+          batch = _firestore.batch();
+          count = 0;
+        }
       }
+    }
+    if (count > 0) {
+      await batch.commit();
     }
   }
 
   Stream<List<NoteFolder>> watch() {
     final user = _auth.currentUser;
-    if (user == null) {
-      return const Stream.empty();
-    }
+    if (user == null) return const Stream.empty();
 
     return _foldersCollection(user.uid).snapshots().map(
       (snapshot) =>
@@ -183,18 +201,20 @@ class NoteFoldersCloudSyncService {
 
   Future<void> save(NoteFolder folder) async {
     final user = _auth.currentUser;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
-    await _foldersCollection(user.uid).doc(folder.id).set({
+    await _foldersCollection(user.uid).doc(folder.id).set(_folderToMap(folder));
+  }
+
+  Map<String, dynamic> _folderToMap(NoteFolder folder) {
+    return {
       'name': folder.name,
       'parentId': folder.parentId,
       'createdAt': Timestamp.fromDate(folder.createdAt),
       'updatedAt': Timestamp.fromDate(folder.updatedAt),
       'deviceUpdatedAt': Timestamp.fromDate(folder.deviceUpdatedAt),
       'isDeleted': folder.isDeleted,
-    });
+    };
   }
 
   NoteFolder _folderFromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -225,29 +245,37 @@ class StickiesCloudSyncService {
 
   Future<void> pushLocalSnapshot(Iterable<Sticky> stickies) async {
     final user = _auth.currentUser;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
     final remoteSnapshot = await _stickiesCollection(user.uid).get();
     final remoteById = <String, Sticky>{
       for (final doc in remoteSnapshot.docs) doc.id: _stickyFromFirestore(doc),
     };
 
+    var batch = _firestore.batch();
+    int count = 0;
+
     for (final sticky in stickies) {
       final remote = remoteById[sticky.id];
       if (remote == null ||
           sticky.deviceUpdatedAt.isAfter(remote.deviceUpdatedAt)) {
-        await save(sticky);
+        batch.set(_stickiesCollection(user.uid).doc(sticky.id), _stickyToMap(sticky));
+        count++;
+        if (count >= 400) {
+          await batch.commit();
+          batch = _firestore.batch();
+          count = 0;
+        }
       }
+    }
+    if (count > 0) {
+      await batch.commit();
     }
   }
 
   Stream<List<Sticky>> watch() {
     final user = _auth.currentUser;
-    if (user == null) {
-      return const Stream.empty();
-    }
+    if (user == null) return const Stream.empty();
 
     return _stickiesCollection(user.uid).snapshots().map(
       (snapshot) =>
@@ -258,11 +286,13 @@ class StickiesCloudSyncService {
 
   Future<void> save(Sticky sticky) async {
     final user = _auth.currentUser;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
-    await _stickiesCollection(user.uid).doc(sticky.id).set({
+    await _stickiesCollection(user.uid).doc(sticky.id).set(_stickyToMap(sticky));
+  }
+
+  Map<String, dynamic> _stickyToMap(Sticky sticky) {
+    return {
       'title': sticky.title,
       'body': sticky.body,
       'color': sticky.color.toARGB32(),
@@ -281,7 +311,7 @@ class StickiesCloudSyncService {
       'updatedAt': Timestamp.fromDate(sticky.updatedAt),
       'deviceUpdatedAt': Timestamp.fromDate(sticky.deviceUpdatedAt),
       'isDeleted': sticky.isDeleted,
-    });
+    };
   }
 
   Sticky _stickyFromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -326,29 +356,37 @@ class StickyBoardsCloudSyncService {
 
   Future<void> pushLocalSnapshot(Iterable<StickyBoard> boards) async {
     final user = _auth.currentUser;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
     final remoteSnapshot = await _boardsCollection(user.uid).get();
     final remoteById = <String, StickyBoard>{
       for (final doc in remoteSnapshot.docs) doc.id: _boardFromFirestore(doc),
     };
 
+    var batch = _firestore.batch();
+    int count = 0;
+
     for (final board in boards) {
       final remote = remoteById[board.id];
       if (remote == null ||
           board.deviceUpdatedAt.isAfter(remote.deviceUpdatedAt)) {
-        await save(board);
+        batch.set(_boardsCollection(user.uid).doc(board.id), _boardToMap(board));
+        count++;
+        if (count >= 400) {
+          await batch.commit();
+          batch = _firestore.batch();
+          count = 0;
+        }
       }
+    }
+    if (count > 0) {
+      await batch.commit();
     }
   }
 
   Stream<List<StickyBoard>> watch() {
     final user = _auth.currentUser;
-    if (user == null) {
-      return const Stream.empty();
-    }
+    if (user == null) return const Stream.empty();
 
     return _boardsCollection(user.uid).snapshots().map(
       (snapshot) =>
@@ -359,17 +397,19 @@ class StickyBoardsCloudSyncService {
 
   Future<void> save(StickyBoard board) async {
     final user = _auth.currentUser;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
-    await _boardsCollection(user.uid).doc(board.id).set({
+    await _boardsCollection(user.uid).doc(board.id).set(_boardToMap(board));
+  }
+
+  Map<String, dynamic> _boardToMap(StickyBoard board) {
+    return {
       'name': board.name,
       'createdAt': Timestamp.fromDate(board.createdAt),
       'updatedAt': Timestamp.fromDate(board.updatedAt),
       'deviceUpdatedAt': Timestamp.fromDate(board.deviceUpdatedAt),
       'isDeleted': board.isDeleted,
-    });
+    };
   }
 
   StickyBoard _boardFromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {

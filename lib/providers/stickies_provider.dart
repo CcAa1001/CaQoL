@@ -42,8 +42,19 @@ class StickiesNotifier extends StateNotifier<List<Sticky>> {
     }
     await _cloudSync.pushLocalSnapshot(_service.getAll(includeDeleted: true));
     _cloudSubscription = _cloudSync.watch().listen((remoteStickies) async {
-      await _service.saveAll(remoteStickies);
-      _load();
+      final locals = _service.getAll(includeDeleted: true);
+      final localById = {for (var s in locals) s.id: s};
+      final toSave = <Sticky>[];
+      for (final remote in remoteStickies) {
+        final local = localById[remote.id];
+        if (local == null || remote.deviceUpdatedAt.isAfter(local.deviceUpdatedAt)) {
+          toSave.add(remote);
+        }
+      }
+      if (toSave.isNotEmpty) {
+        await _service.saveAll(toSave);
+        _load();
+      }
     });
   }
 
