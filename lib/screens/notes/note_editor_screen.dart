@@ -26,10 +26,10 @@ class NoteEditorScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<NoteEditorScreen> createState() => _NoteEditorScreenState();
+  ConsumerState<NoteEditorScreen> createState() => NoteEditorScreenState();
 }
 
-class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
+class NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   static final _attachmentTokenPattern =
       RegExp(r'\[\[attachment:([^\|\]]+)\|([^\]]+)\]\]');
   late TextEditingController _titleCtrl;
@@ -50,6 +50,13 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   final _bodyFocusNode = FocusNode();
   int _searchIndex = -1;
   List<(int, int)> _searchMatches = const [];
+  
+  bool _isDirty = false;
+  bool get isDirty => _isDirty;
+  
+  Future<void> save() async {
+    await _saveAndPop(isClosing: false);
+  }
 
   @override
   void initState() {
@@ -64,6 +71,28 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     _bodyFocusNode.addListener(() {
       if (mounted) setState(() {});
     });
+    _titleCtrl.addListener(_markDirty);
+    _bodyCtrl.addListener(_markDirty);
+    _tagsCtrl.addListener(_markDirty);
+  }
+
+  @override
+  void didUpdateWidget(NoteEditorScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.note?.id != oldWidget.note?.id || widget.initialFolderId != oldWidget.initialFolderId) {
+      _titleCtrl.text = widget.note?.title ?? '';
+      _bodyCtrl.text = widget.note?.body ?? '';
+      _tagsCtrl.text = (widget.note?.tags ?? const []).join(', ');
+      _selectedFolderId = widget.note?.folderId ?? widget.initialFolderId;
+      _isFavorite = widget.note?.isFavorite ?? false;
+      _isDirty = false;
+    }
+  }
+
+  void _markDirty() {
+    if (!_isDirty) {
+      _isDirty = true;
+    }
   }
 
   @override
@@ -77,7 +106,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     super.dispose();
   }
 
-  Future<void> _saveAndPop() async {
+  Future<void> _saveAndPop({bool isClosing = true}) async {
     final title = _titleCtrl.text;
     final body = _bodyCtrl.text;
     final tags = _tagsCtrl.text
@@ -121,6 +150,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     if (savedNoteId != null) {
       widget.onSaved?.call(savedNoteId);
     }
+    
+    _isDirty = false;
+
+    if (!isClosing) return;
 
     if (widget.isEmbedded) {
       if (mounted) {
@@ -245,21 +278,27 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              _metaLine(activeNote),
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 12,
+                            child: AnimatedBuilder(
+                              animation: _bodyCtrl,
+                              builder: (context, _) => Text(
+                                _metaLine(activeNote),
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
                           ),
                           if (_focusMode)
-                            Text(
-                              _draftStats(),
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                            AnimatedBuilder(
+                              animation: _bodyCtrl,
+                              builder: (context, _) => Text(
+                                _draftStats(),
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                         ],
@@ -353,7 +392,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                                   border: InputBorder.none,
                                   contentPadding: EdgeInsets.zero,
                                 ),
-                                onChanged: (_) => setState(() {}),
                               ),
                       ),
                       const SizedBox(height: 20),
@@ -424,12 +462,15 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                       constraints: BoxConstraints(maxWidth: focusWidth),
                       child: Row(
                         children: [
-                          Text(
-                            _draftStats(),
-                            style: TextStyle(
-                              color: AppTheme.textSecondary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                          AnimatedBuilder(
+                            animation: _bodyCtrl,
+                            builder: (context, _) => Text(
+                              _draftStats(),
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           const Spacer(),

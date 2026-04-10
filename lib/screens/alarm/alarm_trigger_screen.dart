@@ -244,11 +244,12 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _LockButton(
-                  icon: widget.isPreview ? Icons.close : Icons.snooze,
-                  label: widget.isPreview ? 'Close' : 'Snooze',
-                  onTap: widget.isPreview ? () => Navigator.of(context).pop() : _snooze,
-                ),
+                if (widget.alarm.quest.type == QuestType.none || widget.isPreview)
+                  _LockButton(
+                    icon: widget.isPreview ? Icons.close : Icons.snooze,
+                    label: widget.isPreview ? 'Close' : 'Snooze',
+                    onTap: widget.isPreview ? () => Navigator.of(context).pop() : _snooze,
+                  ),
                 GestureDetector(
                   onTap: () {
                     if (widget.alarm.quest.type == QuestType.none) {

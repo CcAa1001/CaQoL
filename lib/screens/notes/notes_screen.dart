@@ -35,6 +35,7 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
   _NotesFilter _filter = _NotesFilter.all;
   bool _showFilters = false;
   final _searchFocusNode = FocusNode();
+  final _editorKey = GlobalKey<NoteEditorScreenState>();
 
   @override
   void dispose() {
@@ -43,8 +44,42 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
     super.dispose();
   }
 
-  void _createNewNote(bool isWide) {
+  Future<bool> _handleEditorSwitch() async {
+    final state = _editorKey.currentState;
+    if (state != null && state.isDirty) {
+      final shouldSave = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Unsaved Changes'),
+          content: const Text('You have unsaved changes. Do you want to save them before continuing?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Discard', style: TextStyle(color: Colors.red)),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      );
+      if (shouldSave == null) return false;
+      if (shouldSave) {
+        await state.save();
+      }
+    }
+    return true;
+  }
+
+  void _createNewNote(bool isWide) async {
     if (isWide) {
+      if (!await _handleEditorSwitch()) return;
+      if (!mounted) return;
       setState(() {
         _isCreatingNote = true;
         _selectedNoteId = null;
@@ -318,8 +353,10 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
                               previewText: _linksService.plainText(note.body),
                               tags: note.tags,
                               pathLabel: query.isEmpty ? null : _notePath(note, folders),
-                              onOpen: () {
+                              onOpen: () async {
                                 if (isWide) {
+                                  if (!await _handleEditorSwitch()) return;
+                                  if (!mounted) return;
                                   setState(() {
                                     _selectedNoteId = note.id;
                                     _isCreatingNote = false;
@@ -370,7 +407,7 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
           Expanded(
             child: _isCreatingNote
                 ? NoteEditorScreen(
-                    key: const ValueKey('embedded-new-note'),
+                    key: _editorKey,
                     initialFolderId: _currentFolderId,
                     isEmbedded: true,
                     onSaved: (id) {
@@ -393,7 +430,7 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
                     ),
                   )
                 : NoteEditorScreen(
-                    key: ValueKey(_selectedNoteId),
+                    key: _editorKey,
                     note: selectedNote,
                     isEmbedded: true,
                     onSaved: (id) {
