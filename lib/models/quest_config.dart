@@ -1,81 +1,39 @@
-enum QuestType { none, math, typeSentence, simon, qr, squat }
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-class QuestConfig {
-  final QuestType type;
-  final int missionSeconds;
+part 'quest_config.freezed.dart';
+part 'quest_config.g.dart';
 
-  // Math
-  final String mathDifficulty; // easy, medium, hard
+enum QuestType { none, math, typeSentence, simon, qr, squat, pushup, situp }
 
-  // Type sentence
-  final String sentence;
+@freezed
+abstract class QuestConfig with _$QuestConfig {
+  @JsonSerializable(explicitToJson: true)
+  const factory QuestConfig({
+    @Default(QuestType.none) QuestType type,
+    @Default(30) int missionSeconds,
+    @Default([]) List<String> missionSlots,
+    
+    // Math
+    @Default('easy') String mathDifficulty,
+    @Default(1) int mathRepeatCount,
+    
+    // Type sentence
+    @Default('I am awake and ready for the day') String sentence,
+    @Default(1) int typingPhraseCount,
+    
+    // Simon Says
+    @Default(3) int gridSize,
+    @Default(3) int simonRounds,
+    
+    // QR
+    @Default('') String qrValue,
+    @Default([]) List<String> qrOptions,
+    
+    // Squat / Pushup / Situp
+    @Default(10) int squatCount,
+    
+    @Default([]) List<String> randomQuestTypes,
+  }) = _QuestConfig;
 
-  // Simon Says
-  final int gridSize; // 3, 4, or 5
-
-  // QR
-  final String qrValue;
-  final List<String> qrOptions;
-
-  // Squat
-  final int squatCount;
-
-  const QuestConfig({
-    this.type = QuestType.none,
-    this.missionSeconds = 30,
-    this.mathDifficulty = 'easy',
-    this.sentence = 'I am awake and ready for the day',
-    this.gridSize = 3,
-    this.qrValue = '',
-    this.qrOptions = const [],
-    this.squatCount = 10,
-  });
-
-  Map<String, dynamic> toMap() => {
-    'type': type.name,
-    'missionSeconds': missionSeconds,
-    'mathDifficulty': mathDifficulty,
-    'sentence': sentence,
-    'gridSize': gridSize,
-    'qrValue': qrValue,
-    'qrOptions': qrOptions,
-    'squatCount': squatCount,
-  };
-
-  factory QuestConfig.fromMap(Map<String, dynamic> map) => QuestConfig(
-    type: QuestType.values.firstWhere(
-      (e) => e.name == map['type'],
-      orElse: () => QuestType.none,
-    ),
-    missionSeconds: map['missionSeconds'] ?? 30,
-    mathDifficulty: map['mathDifficulty'] ?? 'easy',
-    sentence: map['sentence'] ?? 'I am awake and ready for the day',
-    gridSize: map['gridSize'] ?? 3,
-    qrValue: map['qrValue'] ?? '',
-    qrOptions: map['qrOptions'] != null
-        ? List<String>.from(map['qrOptions'])
-        : const [],
-    squatCount: map['squatCount'] ?? 10,
-  );
-
-  QuestConfig copyWith({
-    QuestType? type,
-    int? missionSeconds,
-    String? mathDifficulty,
-    String? sentence,
-    int? gridSize,
-    String? qrValue,
-    List<String>? qrOptions,
-    int? squatCount,
-  }) =>
-      QuestConfig(
-        type: type ?? this.type,
-        missionSeconds: missionSeconds ?? this.missionSeconds,
-        mathDifficulty: mathDifficulty ?? this.mathDifficulty,
-        sentence: sentence ?? this.sentence,
-        gridSize: gridSize ?? this.gridSize,
-        qrValue: qrValue ?? this.qrValue,
-        qrOptions: qrOptions ?? this.qrOptions,
-        squatCount: squatCount ?? this.squatCount,
-      );
+  factory QuestConfig.fromJson(Map<String, dynamic> json) => _$QuestConfigFromJson(json);
 }

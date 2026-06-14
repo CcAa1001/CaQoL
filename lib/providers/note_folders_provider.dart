@@ -1,112 +1,108 @@
 import 'dart:async';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../models/note_folder.dart';
 import '../services/auth_service.dart';
-import '../services/cloud_sync_service.dart';
-import '../services/note_folders_service.dart';
 
-final noteFoldersServiceProvider = Provider((ref) => NoteFoldersService());
-
-final noteFoldersProvider =
-    StateNotifierProvider<NoteFoldersNotifier, List<NoteFolder>>((ref) {
-      final user = ref.watch(authStateProvider).valueOrNull;
-      return NoteFoldersNotifier(
-        ref.read(noteFoldersServiceProvider),
-        ref.read(noteFoldersCloudSyncServiceProvider),
-        isCloudEnabled: user != null,
-      );
-    });
+final noteFoldersProvider = StateNotifierProvider<NoteFoldersNotifier, List<NoteFolder>>((ref) {
+  final user = ref.watch(authStateProvider).valueOrNull;
+  return NoteFoldersNotifier(userId: user?.uid);
+});
 
 class NoteFoldersNotifier extends StateNotifier<List<NoteFolder>> {
-  NoteFoldersNotifier(
-    this._service,
-    this._cloudSync, {
-    required this.isCloudEnabled,
-  }) : super([]) {
-    _initialize();
+  final String? userId;
+  StreamSubscription<QuerySnapshot>? _subscription;
+
+  NoteFoldersNotifier({required this.userId}) : super([]) {
+    _init();
   }
 
-  final NoteFoldersService _service;
-  final NoteFoldersCloudSyncService _cloudSync;
-  final bool isCloudEnabled;
-  StreamSubscription<List<NoteFolder>>? _cloudSubscription;
-
-  Future<void> _initialize() async {
-    _load();
-    if (!isCloudEnabled) {
-      return;
-    }
-    await _cloudSync.pushLocalSnapshot(_service.getAll(includeDeleted: true));
-    _cloudSubscription = _cloudSync.watch().listen((remoteFolders) async {
-      final locals = _service.getAll(includeDeleted: true);
-      final localById = {for (var f in locals) f.id: f};
-      final toSave = <NoteFolder>[];
-      for (final remote in remoteFolders) {
-        final local = localById[remote.id];
-        if (local == null || remote.deviceUpdatedAt.isAfter(local.deviceUpdatedAt)) {
-          toSave.add(remote);
+  void _init() {
+    if (userId == null) return;
+    _subscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('folders')
+        .snapshots()
+        .listen((snapshot) {
+      final folders = snapshot.docs.map((doc) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id;
+          data['name'] = data['name'] ?? 'Untitled folder';
+          data['isDeleted'] = data['isDeleted'] ?? false;
+          
+          final nowIso = DateTime.now().toIso8601String();
+          if (data['createdAt'] is Timestamp) data['createdAt'] = (data['createdAt'] as Timestamp).toDate().toIso8601String();
+          else if (data['createdAt'] == null) data['createdAt'] = nowIso;
+          
+          if (data['updatedAt'] is Timestamp) data['updatedAt'] = (data['updatedAt'] as Timestamp).toDate().toIso8601String();
+          else if (data['updatedAt'] == null) data['updatedAt'] = nowIso;
+          
+          if (data['deviceUpdatedAt'] is Timestamp) data['deviceUpdatedAt'] = (data['deviceUpdatedAt'] as Timestamp).toDate().toIso8601String();
+          else if (data['deviceUpdatedAt'] == null) data['deviceUpdatedAt'] = data['updatedAt'] ?? nowIso;
+          
+          return NoteFolder.fromJson(data);
+        } catch (e) {
+          print('Error parsing note folder: $e');
+          return null;
         }
-      }
-      if (toSave.isNotEmpty) {
-        await _service.saveAll(toSave);
-        _load();
-      }
+      }).whereType<NoteFolder>().where((f) => !f.isDeleted).toList();
+      
+      folders.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      state = folders;
     });
   }
 
-  void _load() {
-    state = _service.getAll();
+  CollectionReference get _collection {
+    if (userId == null) throw Exception('User not logged in');
+    return FirebaseFirestore.instance.collection('users').doc(userId).collection('folders');
   }
 
-  Future<void> add(String name, {String? parentId}) async {
+  Future<NoteFolder> add(
+    String name, {
+    String? parentId,
+  }) async {
     final now = DateTime.now();
     final folder = NoteFolder(
-      id: now.microsecondsSinceEpoch.toString(),
-      name: name.trim(),
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name,
       parentId: parentId,
       createdAt: now,
       updatedAt: now,
       deviceUpdatedAt: now,
     );
-    await _service.save(folder);
-    _load();
-    if (isCloudEnabled) {
-      unawaited(_cloudSync.save(folder));
-    }
+    await _collection.doc(folder.id).set(folder.toJson());
+    return folder;
   }
 
   Future<void> update(NoteFolder folder) async {
-    await _service.save(folder);
-    _load();
-    if (isCloudEnabled) {
-      unawaited(_cloudSync.save(folder));
-    }
+    final updated = folder.copyWith(
+      updatedAt: DateTime.now(),
+      deviceUpdatedAt: DateTime.now(),
+    );
+    await _collection.doc(folder.id).set(updated.toJson());
   }
 
   Future<void> delete(String id) async {
-    final deleted = _service.getById(id)?.copyWith(isDeleted: true);
-    await _service.delete(id);
-    _load();
-    if (isCloudEnabled && deleted != null) {
-      unawaited(_cloudSync.save(deleted));
-    }
+    await _collection.doc(id).update({
+      'isDeleted': true,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'deviceUpdatedAt': DateTime.now().toIso8601String(),
+    });
   }
 
   Future<void> importAll(List<NoteFolder> folders) async {
-    await _service.saveAll(folders);
-    _load();
-    if (isCloudEnabled) {
-      for (final folder in folders) {
-        unawaited(_cloudSync.save(folder));
-      }
+    final batch = FirebaseFirestore.instance.batch();
+    for (final folder in folders) {
+      batch.set(_collection.doc(folder.id), folder.toJson());
     }
+    await batch.commit();
   }
 
   @override
   void dispose() {
-    _cloudSubscription?.cancel();
+    _subscription?.cancel();
     super.dispose();
   }
 }

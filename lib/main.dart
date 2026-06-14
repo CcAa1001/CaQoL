@@ -3,12 +3,16 @@ import 'dart:async';
 import 'package:alarm/alarm.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import 'firebase_options.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:convert';
 import 'models/alarm.dart';
 import 'models/awake_check_entry.dart';
 import 'models/note.dart';
@@ -31,14 +35,13 @@ import 'services/alarm_service.dart';
 import 'services/app_settings_service.dart';
 import 'services/auth_service.dart';
 import 'services/awake_check_service.dart';
-import 'services/note_folders_service.dart';
-import 'services/notes_service.dart';
-import 'services/sticky_boards_service.dart';
-import 'services/stickies_service.dart';
+import 'services/qr_service.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
+  
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -46,14 +49,14 @@ void main() async {
     ),
   );
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await NotesService().init();
-  await NoteFoldersService().init();
-  await StickyBoardsService().init();
-  await StickiesService().init();
+  FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+  
+  await Hive.initFlutter();
   await AppSettingsService().init();
   await AwakeCheckService().init();
   await AlarmHistoryService().init();
   await AlarmService().init();
+  await QrService().init();
   if (defaultTargetPlatform == TargetPlatform.android) {
     await Alarm.init();
     await Alarm.setWarningNotificationOnKill(
@@ -349,7 +352,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         autofocus: true,
         focusNode: _homeShortcutsNode,
         child: Scaffold(
-          body: _screens[_currentIndex],
+          body: _screens[_currentIndex]
+              .animate(key: ValueKey(_currentIndex))
+              .fadeIn(duration: 300.ms)
+              .slideY(begin: 0.05, end: 0, duration: 300.ms, curve: Curves.easeOutQuart),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _currentIndex,
             onDestinationSelected: (i) => setState(() => _currentIndex = i),

@@ -6,19 +6,24 @@ class AndroidAlarmPermissionStatus {
   final bool fullScreenIntentAllowed;
   final bool notificationsAllowed;
   final bool ignoringBatteryOptimizations;
+  final bool doNotDisturbAccessAllowed;
+  final String manufacturer;
 
   const AndroidAlarmPermissionStatus({
     required this.exactAlarmAllowed,
     required this.fullScreenIntentAllowed,
     required this.notificationsAllowed,
     required this.ignoringBatteryOptimizations,
+    required this.doNotDisturbAccessAllowed,
+    this.manufacturer = '',
   });
 
   bool get isReady =>
       exactAlarmAllowed &&
       fullScreenIntentAllowed &&
       notificationsAllowed &&
-      ignoringBatteryOptimizations;
+      ignoringBatteryOptimizations &&
+      doNotDisturbAccessAllowed;
 }
 
 class AndroidAlarmPermissionsService {
@@ -31,6 +36,8 @@ class AndroidAlarmPermissionsService {
         fullScreenIntentAllowed: true,
         notificationsAllowed: true,
         ignoringBatteryOptimizations: true,
+        doNotDisturbAccessAllowed: true,
+        manufacturer: '',
       );
     }
 
@@ -43,12 +50,19 @@ class AndroidAlarmPermissionsService {
     final ignoringBatteryOptimizations =
         await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations') ??
             false;
+    final doNotDisturbAccessAllowed =
+        await _channel.invokeMethod<bool>('hasNotificationPolicyAccess') ??
+            false;
+    final manufacturer =
+        await _channel.invokeMethod<String>('getManufacturer') ?? '';
 
     return AndroidAlarmPermissionStatus(
       exactAlarmAllowed: exactAlarmAllowed,
       fullScreenIntentAllowed: fullScreenIntentAllowed,
       notificationsAllowed: notificationsAllowed,
       ignoringBatteryOptimizations: ignoringBatteryOptimizations,
+      doNotDisturbAccessAllowed: doNotDisturbAccessAllowed,
+      manufacturer: manufacturer,
     );
   }
 
@@ -70,6 +84,16 @@ class AndroidAlarmPermissionsService {
   Future<void> openBatteryOptimizationSettings() async {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     await _channel.invokeMethod<void>('openBatteryOptimizationSettings');
+  }
+
+  Future<void> openDoNotDisturbSettings() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    await _channel.invokeMethod<void>('openDoNotDisturbSettings');
+  }
+
+  Future<void> openAutostartSettings() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    await _channel.invokeMethod<void>('openAutostartSettings');
   }
 }
 

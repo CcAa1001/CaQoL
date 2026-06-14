@@ -58,4 +58,48 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
     await _service.save(updated);
     state = updated;
   }
+
+  Future<void> setAlarmRescheduleOnResume(bool value) async {
+    final updated = state.copyWith(alarmRescheduleOnResume: value);
+    await _service.save(updated);
+    state = updated;
+  }
+
+  Future<void> setAlarmAudioBoostEnabled(bool value) async {
+    final updated = state.copyWith(alarmAudioBoostEnabled: value);
+    await _service.save(updated);
+    state = updated;
+  }
+
+  Future<void> setAlarmEscalationEnabled(bool value) async {
+    final updated = state.copyWith(alarmEscalationEnabled: value);
+    await _service.save(updated);
+    state = updated;
+  }
+
+  Future<void> setAlarmEscalationSeconds(int seconds) async {
+    final updated = state.copyWith(alarmEscalationSeconds: seconds);
+    await _service.save(updated);
+    state = updated;
+  }
+
+  Future<void> setEmergencyDismissTapCount(int taps) async {
+    final updated = state.copyWith(emergencyDismissTapCount: taps);
+    await _service.save(updated);
+    state = updated;
+  }
+
+  Future<void> setEmergencyDismissCooldownDays(int days) async {
+    final updated = state.copyWith(emergencyDismissCooldownDays: days);
+    await _service.save(updated);
+    state = updated;
+  }
+
+  Future<void> markEmergencyDismissUsed(DateTime at) async {
+    final updated = state.copyWith(
+      emergencyDismissLastUsedAt: at.toIso8601String(),
+    );
+    await _service.save(updated);
+    state = updated;
+  }
 }

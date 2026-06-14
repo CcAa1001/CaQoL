@@ -31,6 +31,7 @@ class AlarmNotifier extends StateNotifier<List<AlarmModel>> {
     this._settings,
   ) : super([]) {
     _load();
+    ensureScheduledAlarms();
   }
 
   final Ref _ref;
@@ -47,9 +48,22 @@ class AlarmNotifier extends StateNotifier<List<AlarmModel>> {
     state = _service.getAll();
   }
 
-  Future<void> add(AlarmModel alarm) async {
+  Future<void> ensureScheduledAlarms() async {
+    final missed = await _service.ensureScheduledForEnabledAlarms();
+    for (final alarm in missed) {
+      await _historyService.log(
+        alarm,
+        'missed_not_delivered',
+        details: 'Scheduled for ${alarm.scheduledAt}',
+      );
+    }
+    _refreshHistory();
+    _load();
+  }
+
+  Future<void> add(AlarmModel alarm, {DateTime? at}) async {
     await _service.save(alarm);
-    await _service.schedule(alarm);
+    await _service.schedule(alarm, at: at);
     await _historyService.log(alarm, 'created');
     _refreshHistory();
     _load();
@@ -68,14 +82,15 @@ class AlarmNotifier extends StateNotifier<List<AlarmModel>> {
     final alarm = state.firstWhere((a) => a.id == id);
     final updated = alarm.copyWith(isEnabled: !alarm.isEnabled);
     if (updated.isEnabled) {
+      await _service.save(updated.copyWith(scheduledAt: null));
       await _service.schedule(updated);
       await _historyService.log(updated, 'enabled');
     } else {
       await _service.cancel(updated);
+      await _service.save(updated.copyWith(scheduledAt: null));
       await _historyService.log(updated, 'disabled');
     }
     _refreshHistory();
-    await _service.save(updated);
     _load();
   }
 
@@ -108,17 +123,18 @@ class AlarmNotifier extends StateNotifier<List<AlarmModel>> {
       return;
     }
 
-    await _service.save(alarm.copyWith(isEnabled: false));
+    await _service.save(alarm.copyWith(isEnabled: false, scheduledAt: null));
     _load();
   }
 
   Future<void> _scheduleAwakeCheck(AlarmModel alarm) async {
-    if (!_settings.awakeCheckEnabled) {
+    final delayMinutes = alarm.wakeCheckMinutes;
+    if (delayMinutes <= 0) {
       return;
     }
     final entry = await _awakeCheckService.createFor(
       alarm,
-      delayMinutes: _settings.awakeCheckDelayMinutes,
+      delayMinutes: delayMinutes,
       windowMinutes: _settings.awakeCheckWindowMinutes,
     );
     await _awakeCheckService.schedule(entry);
@@ -126,7 +142,7 @@ class AlarmNotifier extends StateNotifier<List<AlarmModel>> {
       alarm,
       'awake_check_scheduled',
       details:
-          'Follow-up in ${_settings.awakeCheckDelayMinutes} min, window ${_settings.awakeCheckWindowMinutes} min',
+          'Follow-up in $delayMinutes min, window ${_settings.awakeCheckWindowMinutes} min',
     );
     _refreshHistory();
   }
@@ -199,6 +215,30 @@ class AlarmNotifier extends StateNotifier<List<AlarmModel>> {
           'Mission timer expired during ${alarm.quest.type.name} (${alarm.quest.missionSeconds}s)',
     );
     _refreshHistory();
+    _load();
+  }
+
+  Future<void> emergencyDismiss(String id) async {
+    final alarm = _service.getById(id);
+    if (alarm == null) return;
+
+    await _service.cancel(alarm);
+    await _historyService.log(
+      alarm,
+      'emergency_dismissed',
+      details: 'Alarm stopped with emergency override',
+    );
+    _refreshHistory();
+    await _scheduleAwakeCheck(alarm);
+
+    if (_service.repeats(alarm)) {
+      await _service.schedule(
+        alarm,
+        from: DateTime.now().add(const Duration(minutes: 1)),
+      );
+    } else {
+      await _service.save(alarm.copyWith(isEnabled: false, scheduledAt: null));
+    }
     _load();
   }
 }

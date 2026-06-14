@@ -1,99 +1,102 @@
-class NoteComment {
-  final String id;
-  final String text;
-  final String quotedText;
-  final DateTime createdAt;
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  const NoteComment({
-    required this.id,
-    required this.text,
-    this.quotedText = '',
-    required this.createdAt,
-  });
+part 'note.freezed.dart';
+part 'note.g.dart';
 
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'text': text,
-        'quotedText': quotedText,
-        'createdAt': createdAt.toIso8601String(),
-      };
+@freezed
+abstract class NoteComment with _$NoteComment {
+  const factory NoteComment({
+    required String id,
+    required String text,
+    @Default('') String quotedText,
+    required DateTime createdAt,
+  }) = _NoteComment;
 
-  factory NoteComment.fromMap(Map<String, dynamic> map) => NoteComment(
-        id: (map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString())
-            .toString(),
-        text: (map['text'] ?? '').toString(),
-        quotedText: (map['quotedText'] ?? '').toString(),
-        createdAt: _readNoteDate(map['createdAt']),
-      );
+  factory NoteComment.fromMap(Map<String, dynamic> map) {
+    return NoteComment(
+      id: (map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
+      text: (map['text'] ?? '').toString(),
+      quotedText: (map['quotedText'] ?? '').toString(),
+      createdAt: _readNoteDate(map['createdAt']),
+    );
+  }
+
+  factory NoteComment.fromJson(Map<String, dynamic> json) => _$NoteCommentFromJson(json);
 }
 
-class NoteAttachment {
-  final String id;
-  final String name;
-  final String path;
-  final String type;
-  final DateTime createdAt;
+@freezed
+abstract class NoteAttachment with _$NoteAttachment {
+  const factory NoteAttachment({
+    required String id,
+    required String name,
+    required String path,
+    required String type,
+    required DateTime createdAt,
+  }) = _NoteAttachment;
 
-  const NoteAttachment({
-    required this.id,
-    required this.name,
-    required this.path,
-    required this.type,
-    required this.createdAt,
-  });
+  factory NoteAttachment.fromMap(Map<String, dynamic> map) {
+    return NoteAttachment(
+      id: (map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
+      name: (map['name'] ?? 'Attachment').toString(),
+      path: (map['path'] ?? '').toString(),
+      type: (map['type'] ?? 'file').toString(),
+      createdAt: _readNoteDate(map['createdAt']),
+    );
+  }
 
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'name': name,
-        'path': path,
-        'type': type,
-        'createdAt': createdAt.toIso8601String(),
-      };
-
-  factory NoteAttachment.fromMap(Map<String, dynamic> map) => NoteAttachment(
-        id: (map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString())
-            .toString(),
-        name: (map['name'] ?? 'Attachment').toString(),
-        path: (map['path'] ?? '').toString(),
-        type: (map['type'] ?? 'file').toString(),
-        createdAt: _readNoteDate(map['createdAt']),
-      );
+  factory NoteAttachment.fromJson(Map<String, dynamic> json) => _$NoteAttachmentFromJson(json);
 }
 
-class Note {
-  final String id;
-  final String title;
-  final String body;
-  final String? folderId;
-  final bool isFavorite;
-  final List<String> tags;
-  final List<NoteComment> comments;
-  final List<NoteAttachment> attachments;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final DateTime deviceUpdatedAt;
-  final bool isDeleted;
+@freezed
+abstract class Note with _$Note {
+  const Note._(); // Added to allow custom methods
+  const factory Note({
+    required String id,
+    required String title,
+    required String body,
+    String? folderId,
+    @Default(0) int sortOrder,
+    @Default(false) bool isFavorite,
+    @Default([]) List<String> tags,
+    @Default([]) List<NoteComment> comments,
+    @Default([]) List<NoteAttachment> attachments,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    required DateTime deviceUpdatedAt,
+    @Default(false) bool isDeleted,
+  }) = _Note;
 
-  Note({
-    required this.id,
-    required this.title,
-    required this.body,
-    this.folderId,
-    this.isFavorite = false,
-    this.tags = const [],
-    this.comments = const [],
-    this.attachments = const [],
-    required this.createdAt,
-    required this.updatedAt,
-    required this.deviceUpdatedAt,
-    this.isDeleted = false,
-  });
+  factory Note.fromMap(Map<String, dynamic> map) {
+    final normalized = _normalizeNoteMap(map);
+    final updatedAt = _readNoteDate(normalized['updatedAt']);
+    return Note(
+      id: (normalized['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
+      title: (normalized['title'] ?? 'Untitled').toString(),
+      body: (normalized['body'] ?? '').toString(),
+      folderId: normalized['folderId']?.toString(),
+      sortOrder: normalized['sortOrder'] is int
+          ? normalized['sortOrder'] as int
+          : int.tryParse((normalized['sortOrder'] ?? '').toString()) ?? 0,
+      isFavorite: normalized['isFavorite'] == true,
+      tags: _readStringList(normalized['tags']),
+      comments: _readMapList(normalized['comments']).map(NoteComment.fromMap).toList(),
+      attachments: _readMapList(normalized['attachments']).map(NoteAttachment.fromMap).toList(),
+      createdAt: _readNoteDate(normalized['createdAt']),
+      updatedAt: updatedAt,
+      deviceUpdatedAt: _readNoteDate(normalized['deviceUpdatedAt'], fallback: updatedAt),
+      isDeleted: normalized['isDeleted'] == true,
+    );
+  }
 
-  Note copyWith({
+  factory Note.fromJson(Map<String, dynamic> json) => _$NoteFromJson(json);
+  
+  // Custom copyWith to allow clearing folderId
+  Note copyWithClearFolder({
     String? title,
     String? body,
     String? folderId,
-    bool? clearFolderId,
+    bool clearFolderId = false,
+    int? sortOrder,
     bool? isFavorite,
     List<String>? tags,
     List<NoteComment>? comments,
@@ -103,61 +106,18 @@ class Note {
     bool? isDeleted,
   }) {
     final now = DateTime.now();
-    return Note(
-      id: id,
+    return copyWith(
       title: title ?? this.title,
       body: body ?? this.body,
-      folderId: clearFolderId == true ? null : folderId ?? this.folderId,
+      folderId: clearFolderId ? null : (folderId ?? this.folderId),
+      sortOrder: sortOrder ?? this.sortOrder,
       isFavorite: isFavorite ?? this.isFavorite,
       tags: tags ?? this.tags,
       comments: comments ?? this.comments,
       attachments: attachments ?? this.attachments,
-      createdAt: createdAt,
       updatedAt: updatedAt ?? now,
       deviceUpdatedAt: deviceUpdatedAt ?? now,
       isDeleted: isDeleted ?? this.isDeleted,
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-    'id': id,
-    'title': title,
-    'body': body,
-    'folderId': folderId,
-    'isFavorite': isFavorite,
-    'tags': tags,
-    'comments': comments.map((comment) => comment.toMap()).toList(),
-    'attachments': attachments.map((attachment) => attachment.toMap()).toList(),
-    'createdAt': createdAt.toIso8601String(),
-    'updatedAt': updatedAt.toIso8601String(),
-    'deviceUpdatedAt': deviceUpdatedAt.toIso8601String(),
-    'isDeleted': isDeleted,
-  };
-
-  factory Note.fromMap(Map<String, dynamic> map) {
-    final normalized = _normalizeNoteMap(map);
-    final updatedAt = _readNoteDate(normalized['updatedAt']);
-    return Note(
-      id: (normalized['id'] ?? DateTime.now().millisecondsSinceEpoch.toString())
-          .toString(),
-      title: (normalized['title'] ?? 'Untitled').toString(),
-      body: (normalized['body'] ?? '').toString(),
-      folderId: normalized['folderId']?.toString(),
-      isFavorite: normalized['isFavorite'] == true,
-      tags: _readStringList(normalized['tags']),
-      comments: _readMapList(normalized['comments'])
-          .map(NoteComment.fromMap)
-          .toList(),
-      attachments: _readMapList(normalized['attachments'])
-          .map(NoteAttachment.fromMap)
-          .toList(),
-      createdAt: _readNoteDate(normalized['createdAt']),
-      updatedAt: updatedAt,
-      deviceUpdatedAt: _readNoteDate(
-        normalized['deviceUpdatedAt'],
-        fallback: updatedAt,
-      ),
-      isDeleted: normalized['isDeleted'] == true,
     );
   }
 }
@@ -183,26 +143,17 @@ Map<String, dynamic> _normalizeNoteMap(Map<dynamic, dynamic> map) {
 }
 
 List<String> _readStringList(dynamic value) {
-  if (value is! List) {
-    return const [];
-  }
+  if (value is! List) return const [];
   return value.map((item) => item.toString()).toList();
 }
 
 List<Map<String, dynamic>> _readMapList(dynamic value) {
-  if (value is! List) {
-    return const [];
-  }
-  return value
-      .whereType<Map>()
-      .map((item) => _normalizeNoteMap(item))
-      .toList();
+  if (value is! List) return const [];
+  return value.whereType<Map>().map((item) => _normalizeNoteMap(item)).toList();
 }
 
 DateTime _readNoteDate(dynamic value, {DateTime? fallback}) {
-  if (value is DateTime) {
-    return value;
-  }
+  if (value is DateTime) return value;
   if (value is String && value.isNotEmpty) {
     return DateTime.tryParse(value) ?? fallback ?? DateTime.now();
   }

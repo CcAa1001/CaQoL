@@ -584,9 +584,8 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
     final children = folders.where((item) => item.parentId == folder.id).toList();
     for (final child in children) {
       await ref.read(noteFoldersProvider.notifier).update(
-            child.copyWith(
+            child.copyWithClearParent(
               parentId: folder.parentId,
-              clearParentId: folder.parentId == null,
             ),
           );
     }

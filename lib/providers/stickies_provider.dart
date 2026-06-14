@@ -1,88 +1,82 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/sticky.dart';
 import '../services/auth_service.dart';
-import '../services/cloud_sync_service.dart';
-import '../services/stickies_service.dart';
 
-final stickiesServiceProvider = Provider((ref) => StickiesService());
-
-final stickiesProvider = StateNotifierProvider<StickiesNotifier, List<Sticky>>((
-  ref,
-) {
+final stickiesProvider = StateNotifierProvider<StickiesNotifier, List<Sticky>>((ref) {
   final user = ref.watch(authStateProvider).valueOrNull;
-  return StickiesNotifier(
-    ref.read(stickiesServiceProvider),
-    ref.read(stickiesCloudSyncServiceProvider),
-    isCloudEnabled: user != null,
-  );
+  return StickiesNotifier(userId: user?.uid);
 });
 
 class StickiesNotifier extends StateNotifier<List<Sticky>> {
-  final StickiesService _service;
-  final StickiesCloudSyncService _cloudSync;
-  final bool isCloudEnabled;
-  StreamSubscription<List<Sticky>>? _cloudSubscription;
+  final String? userId;
+  StreamSubscription<QuerySnapshot>? _subscription;
 
-  StickiesNotifier(
-    this._service,
-    this._cloudSync, {
-    required this.isCloudEnabled,
-  }) : super([]) {
-    _initialize();
+  StickiesNotifier({required this.userId}) : super([]) {
+    _init();
   }
 
-  Future<void> _initialize() async {
-    await _expireOldStickies();
-    _load();
-    if (!isCloudEnabled) {
-      return;
-    }
-    await _cloudSync.pushLocalSnapshot(_service.getAll(includeDeleted: true));
-    _cloudSubscription = _cloudSync.watch().listen((remoteStickies) async {
-      final locals = _service.getAll(includeDeleted: true);
-      final localById = {for (var s in locals) s.id: s};
-      final toSave = <Sticky>[];
-      for (final remote in remoteStickies) {
-        final local = localById[remote.id];
-        if (local == null || remote.deviceUpdatedAt.isAfter(local.deviceUpdatedAt)) {
-          toSave.add(remote);
+  void _init() {
+    if (userId == null) return;
+    _subscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('stickies')
+        .snapshots()
+        .listen((snapshot) {
+      final stickies = snapshot.docs.map((doc) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id;
+          data['title'] = data['title'] ?? '';
+          data['body'] = data['body'] ?? '';
+          data['isDeleted'] = data['isDeleted'] ?? false;
+          
+          final nowIso = DateTime.now().toIso8601String();
+          if (data['createdAt'] is Timestamp) data['createdAt'] = (data['createdAt'] as Timestamp).toDate().toIso8601String();
+          else if (data['createdAt'] == null) data['createdAt'] = nowIso;
+          
+          if (data['updatedAt'] is Timestamp) data['updatedAt'] = (data['updatedAt'] as Timestamp).toDate().toIso8601String();
+          else if (data['updatedAt'] == null) data['updatedAt'] = nowIso;
+          
+          if (data['deviceUpdatedAt'] is Timestamp) data['deviceUpdatedAt'] = (data['deviceUpdatedAt'] as Timestamp).toDate().toIso8601String();
+          else if (data['deviceUpdatedAt'] == null) data['deviceUpdatedAt'] = data['updatedAt'] ?? nowIso;
+          
+          if (data['expiresAt'] is Timestamp) data['expiresAt'] = (data['expiresAt'] as Timestamp).toDate().toIso8601String();
+          
+          return Sticky.fromJson(data);
+        } catch (e) {
+          print('Error parsing sticky: $e');
+          return null;
         }
-      }
-      if (toSave.isNotEmpty) {
-        await _service.saveAll(toSave);
-        _load();
-      }
+      }).whereType<Sticky>().where((s) => !s.isDeleted).toList();
+      
+      stickies.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      state = stickies;
+      _expireOldStickies(stickies);
     });
   }
 
-  void _load() {
-    state = _service.getAll();
+  CollectionReference get _collection {
+    if (userId == null) throw Exception('User not logged in');
+    return FirebaseFirestore.instance.collection('users').doc(userId).collection('stickies');
   }
 
-  Future<void> _expireOldStickies() async {
+  Future<void> _expireOldStickies(List<Sticky> currentStickies) async {
     final now = DateTime.now();
-    final expired = _service
-        .getAll(includeDeleted: true)
-        .where(
-          (sticky) =>
-              !sticky.isDeleted &&
-              sticky.expiresAt != null &&
-              !sticky.expiresAt!.isAfter(now),
-        )
-        .toList();
-    if (expired.isEmpty) {
-      return;
-    }
+    final expired = currentStickies.where(
+      (sticky) => sticky.expiresAt != null && !sticky.expiresAt!.isAfter(now),
+    ).toList();
+    
+    if (expired.isEmpty) return;
+    
+    final batch = FirebaseFirestore.instance.batch();
     for (final sticky in expired) {
-      final deleted = sticky.copyWith(isDeleted: true);
-      await _service.save(deleted);
-      if (isCloudEnabled) {
-        unawaited(_cloudSync.save(deleted));
-      }
+      batch.update(_collection.doc(sticky.id), {'isDeleted': true});
     }
+    await batch.commit();
   }
 
   Future<void> add({
@@ -92,6 +86,13 @@ class StickiesNotifier extends StateNotifier<List<Sticky>> {
     String? boardId,
     String? linkedNoteId,
     String? linkedNoteTitle,
+    String stickyType = 'text',
+    String? sourceName,
+    String? sourcePath,
+    String lane = 'Inbox',
+    String? liveUrl,
+    int liveRefreshMinutes = 5,
+    DateTime? liveRefreshedAt,
     String size = 'medium',
     bool checklistMode = false,
     List<StickyChecklistItem> checklistItems = const [],
@@ -107,157 +108,136 @@ class StickiesNotifier extends StateNotifier<List<Sticky>> {
       boardId: boardId,
       linkedNoteId: linkedNoteId,
       linkedNoteTitle: linkedNoteTitle,
+      stickyType: stickyType,
+      sourceName: sourceName,
+      sourcePath: sourcePath,
+      lane: lane,
+      liveUrl: liveUrl,
+      liveRefreshMinutes: liveRefreshMinutes,
+      liveRefreshedAt: liveRefreshedAt,
       size: size,
       checklistMode: checklistMode,
       checklistItems: checklistItems,
       expiresAt: expiresAt,
       isPinned: isPinned,
-      sortOrder: _service.nextSortOrder(boardId: boardId),
+      sortOrder: 0,
       updatedAt: now,
       deviceUpdatedAt: now,
     );
-    await _service.save(sticky);
-    _load();
-    if (isCloudEnabled) {
-      unawaited(_cloudSync.save(sticky));
-    }
+    await _collection.doc(sticky.id).set(sticky.toJson());
   }
 
   Future<void> update(Sticky sticky) async {
-    await _service.save(sticky);
-    _load();
-    if (isCloudEnabled) {
-      unawaited(_cloudSync.save(sticky));
-    }
+    final updated = sticky.copyWith(
+      updatedAt: DateTime.now(),
+      deviceUpdatedAt: DateTime.now(),
+    );
+    await _collection.doc(sticky.id).set(updated.toJson());
   }
 
   Future<void> delete(String id) async {
-    final deletedSticky = _service.getById(id)?.copyWith(isDeleted: true);
-    await _service.delete(id);
-    _load();
-    if (isCloudEnabled && deletedSticky != null) {
-      unawaited(_cloudSync.save(deletedSticky));
-    }
+    await _collection.doc(id).update({
+      'isDeleted': true,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'deviceUpdatedAt': DateTime.now().toIso8601String(),
+    });
   }
 
   Future<void> moveOutOfBoard(String boardId) async {
-    final stickies = _service.getAll(includeDeleted: true)
-        .where((sticky) => sticky.boardId == boardId)
-        .map((sticky) => sticky.copyWith(clearBoardId: true))
-        .toList();
-    await _service.moveStickiesOutOfBoard(boardId);
-    _load();
-    if (isCloudEnabled) {
-      for (final sticky in stickies) {
-        unawaited(_cloudSync.save(sticky));
-      }
+    final batch = FirebaseFirestore.instance.batch();
+    for (final sticky in state.where((s) => s.boardId == boardId)) {
+      final updated = sticky.copyWithClearBoard(clearBoardId: true);
+      batch.set(_collection.doc(sticky.id), updated.toJson());
     }
+    await batch.commit();
   }
 
   Future<void> togglePinned(String id) async {
-    final sticky = _service.getById(id);
-    if (sticky == null) return;
-    await update(sticky.copyWith(isPinned: !sticky.isPinned));
+    try {
+      final sticky = state.firstWhere((s) => s.id == id);
+      await update(sticky.copyWith(isPinned: !sticky.isPinned));
+    } catch (_) {}
   }
 
   Future<void> importAll(List<Sticky> stickies) async {
-    await _service.saveAll(stickies);
-    _load();
-    if (isCloudEnabled) {
-      for (final sticky in stickies) {
-        unawaited(_cloudSync.save(sticky));
-      }
+    final batch = FirebaseFirestore.instance.batch();
+    for (final sticky in stickies) {
+      batch.set(_collection.doc(sticky.id), sticky.toJson());
     }
+    await batch.commit();
   }
 
   Future<void> reorder({
     required String? boardId,
     required List<String> orderedIds,
   }) async {
-    final relevant = _service
-        .getAll(includeDeleted: true)
-        .where((sticky) => sticky.boardId == boardId && !sticky.isDeleted)
-        .toList();
-    if (relevant.isEmpty) {
-      return;
+    final batch = FirebaseFirestore.instance.batch();
+    for (var i = 0; i < orderedIds.length; i++) {
+      final id = orderedIds[i];
+      try {
+        final sticky = state.firstWhere((s) => s.id == id);
+        final updated = sticky.copyWith(sortOrder: i);
+        batch.set(_collection.doc(id), updated.toJson());
+      } catch (_) {}
     }
-
-    for (var index = 0; index < orderedIds.length; index++) {
-      Sticky? sticky;
-      for (final item in relevant) {
-        if (item.id == orderedIds[index]) {
-          sticky = item;
-          break;
-        }
-      }
-      if (sticky == null) continue;
-      final updated = sticky.copyWith(sortOrder: index);
-      await _service.save(updated);
-      if (isCloudEnabled) {
-        unawaited(_cloudSync.save(updated));
-      }
-    }
-    _load();
+    await batch.commit();
   }
 
   Future<void> toggleChecklistItem(
     String stickyId,
     String itemId,
   ) async {
-    final sticky = _service.getById(stickyId);
-    if (sticky == null) return;
-    final updatedItems = sticky.checklistItems
-        .map(
-          (item) => item.id == itemId
-              ? item.copyWith(isDone: !item.isDone)
-              : item,
-        )
-        .toList();
-    await update(sticky.copyWith(checklistItems: updatedItems));
+    try {
+      final sticky = state.firstWhere((s) => s.id == stickyId);
+      final updatedItems = sticky.checklistItems.map((item) {
+        return item.id == itemId ? item.copyWith(isDone: !item.isDone) : item;
+      }).toList();
+      await update(sticky.copyWith(checklistItems: updatedItems));
+    } catch (_) {}
+  }
+
+  Future<void> refreshLiveSticky(
+    String stickyId, {
+    required String snapshot,
+    required DateTime refreshedAt,
+  }) async {
+    try {
+      final sticky = state.firstWhere((s) => s.id == stickyId);
+      if (sticky.stickyType != 'live') return;
+      await update(
+        sticky.copyWith(
+          body: snapshot,
+          liveRefreshedAt: refreshedAt,
+        ),
+      );
+    } catch (_) {}
   }
 
   Future<void> pinAllInBoard(String? boardId) async {
-    final targets = _service
-        .getAll(includeDeleted: true)
-        .where((sticky) => sticky.boardId == boardId && !sticky.isDeleted)
-        .toList();
-    for (final sticky in targets) {
+    final batch = FirebaseFirestore.instance.batch();
+    for (final sticky in state.where((s) => s.boardId == boardId)) {
       final updated = sticky.copyWith(isPinned: true);
-      await _service.save(updated);
-      if (isCloudEnabled) {
-        unawaited(_cloudSync.save(updated));
-      }
+      batch.set(_collection.doc(sticky.id), updated.toJson());
     }
-    _load();
+    await batch.commit();
   }
 
   Future<void> clearCompletedChecklistItems(String? boardId) async {
-    final targets = _service
-        .getAll(includeDeleted: true)
-        .where(
-          (sticky) =>
-              sticky.boardId == boardId &&
-              sticky.checklistMode &&
-              sticky.checklistItems.any((item) => item.isDone),
-        )
-        .toList();
-    for (final sticky in targets) {
-      final updated = sticky.copyWith(
-        checklistItems: sticky.checklistItems
-            .where((item) => !item.isDone)
-            .toList(),
-      );
-      await _service.save(updated);
-      if (isCloudEnabled) {
-        unawaited(_cloudSync.save(updated));
+    final batch = FirebaseFirestore.instance.batch();
+    for (final sticky in state.where((s) => s.boardId == boardId && s.checklistMode)) {
+      if (sticky.checklistItems.any((item) => item.isDone)) {
+        final updated = sticky.copyWith(
+          checklistItems: sticky.checklistItems.where((item) => !item.isDone).toList(),
+        );
+        batch.set(_collection.doc(sticky.id), updated.toJson());
       }
     }
-    _load();
+    await batch.commit();
   }
 
   @override
   void dispose() {
-    _cloudSubscription?.cancel();
+    _subscription?.cancel();
     super.dispose();
   }
 }

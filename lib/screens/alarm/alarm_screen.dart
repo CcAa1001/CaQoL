@@ -1,7 +1,11 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
+import '../../widgets/glass_card.dart';
+import '../../widgets/animated_toggle.dart';
 import '../../models/alarm.dart';
 import '../../models/alarm_history_entry.dart';
 import '../../models/quest_config.dart';
@@ -121,7 +125,7 @@ class AlarmScreen extends ConsumerWidget {
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                 sliver: SliverToBoxAdapter(
-                  child: _NextAlarmBanner(alarm: nextAlarm),
+                  child: _NextAlarmHero(alarm: nextAlarm),
                 ),
               ),
             if (allHistory.isNotEmpty)
@@ -166,7 +170,10 @@ class AlarmScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                 sliver: SliverList.separated(
                   itemCount: alarms.length,
-                  itemBuilder: (context, i) => _AlarmCard(alarm: alarms[i]),
+                  itemBuilder: (context, i) => _AlarmCard(alarm: alarms[i])
+                      .animate(delay: (i * 100).ms)
+                      .fadeIn(duration: 400.ms)
+                      .slideX(begin: 0.1, curve: Curves.easeOutBack),
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                 ),
               ),
@@ -896,9 +903,9 @@ class _PermissionChip extends StatelessWidget {
   }
 }
 
-class _NextAlarmBanner extends StatelessWidget {
+class _NextAlarmHero extends StatelessWidget {
   final AlarmModel alarm;
-  const _NextAlarmBanner({required this.alarm});
+  const _NextAlarmHero({required this.alarm});
 
   String _timeUntil() {
     final now = DateTime.now();
@@ -906,43 +913,83 @@ class _NextAlarmBanner extends StatelessWidget {
     final diff = target.difference(now);
     final h = diff.inHours;
     final m = diff.inMinutes % 60;
+    if (h == 0 && m == 0) return 'Ringing very soon';
     if (h == 0) return 'Rings in $m minutes';
     return 'Rings in $h hr ${m > 0 ? '$m min' : ''}';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.primary.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.primary.withOpacity(0.3), width: 0.5),
-      ),
-      child: Row(
+    return GlassCard(
+      glowing: true,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Column(
         children: [
-          const Icon(Icons.notifications_active, color: AppTheme.primary, size: 18),
-          const SizedBox(width: 10),
-          Text(
-            _timeUntil(),
-            style: const TextStyle(
-              color: AppTheme.primary,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+          const Text(
+            'UPCOMING ALARM',
+            style: TextStyle(
+              color: AppTheme.neonCyan,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
             ),
           ),
-          const Spacer(),
-          Text(
-            alarm.timeString,
-            style: const TextStyle(
-              color: AppTheme.primary,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                alarm.timeString,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 64,
+                  fontWeight: FontWeight.w200,
+                  letterSpacing: -3,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  alarm.hour < 12 ? 'AM' : 'PM',
+                  style: const TextStyle(
+                    color: AppTheme.neonPink,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceHigh.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.timer_outlined, color: AppTheme.textSecondary, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  _timeUntil(),
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
-    );
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, curve: Curves.easeOutBack);
   }
 }
 
@@ -963,7 +1010,13 @@ class _AlarmCard extends ConsumerWidget {
       case QuestType.qr:
         return 'QR scan';
       case QuestType.squat:
-        return 'Step challenge';
+        return 'Squats';
+      case QuestType.pushup:
+        return 'Pushups';
+      case QuestType.situp:
+        return 'Situps';
+      default:
+        return 'Unknown';
     }
   }
 
@@ -978,139 +1031,165 @@ class _AlarmCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Dismissible(
+    return Slidable(
       key: Key(alarm.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        decoration: BoxDecoration(
-          color: AppTheme.danger,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Icon(Icons.delete_outline, color: Colors.white),
+      endActionPane: ActionPane(
+        motion: const ScrollMotion(),
+        extentRatio: 0.25,
+        children: [
+          CustomSlidableAction(
+            onPressed: (_) => ref.read(alarmProvider.notifier).delete(alarm.id),
+            backgroundColor: AppTheme.danger,
+            foregroundColor: Colors.white,
+            borderRadius: const BorderRadius.horizontal(right: Radius.circular(24)),
+            child: const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.delete_outline, size: 28),
+              ],
+            ),
+          ),
+        ],
       ),
-      onDismissed: (_) => ref.read(alarmProvider.notifier).delete(alarm.id),
-      child: GestureDetector(
+      child: GlassCard(
+        glowing: alarm.isEnabled,
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => AlarmEditorScreen(alarm: alarm)),
         ),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: alarm.isEnabled ? AppTheme.surface : AppTheme.surface.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: alarm.isEnabled ? AppTheme.border : AppTheme.border.withOpacity(0.3),
-              width: 0.5,
-            ),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          alarm.timeString,
-                          style: TextStyle(
-                            color: alarm.isEnabled ? AppTheme.textPrimary : AppTheme.textTertiary,
-                            fontSize: 40,
-                            fontWeight: FontWeight.w300,
-                            letterSpacing: -2,
-                            height: 1,
-                          ),
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        alarm.timeString,
+                        style: TextStyle(
+                          color: alarm.isEnabled ? AppTheme.textPrimary : AppTheme.textTertiary,
+                          fontSize: 48,
+                          fontWeight: FontWeight.w200,
+                          letterSpacing: -2,
+                          height: 1,
                         ),
-                        const SizedBox(width: 6),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Text(
-                            alarm.hour < 12 ? 'AM' : 'PM',
-                            style: TextStyle(
-                              color: alarm.isEnabled ? AppTheme.textSecondary : AppTheme.textTertiary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        if (alarm.label.isNotEmpty) ...[
-                          Text(
-                            alarm.label,
-                            style: TextStyle(
-                              color: alarm.isEnabled ? AppTheme.textSecondary : AppTheme.textTertiary,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            width: 3,
-                            height: 3,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.textTertiary,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Text(
-                          alarm.repeatString,
-                          style: TextStyle(
-                            color: alarm.isEnabled ? AppTheme.textSecondary : AppTheme.textTertiary,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _nextRingText(),
-                      style: TextStyle(
-                        color: alarm.isEnabled ? AppTheme.textTertiary : AppTheme.textTertiary.withOpacity(0.7),
-                        fontSize: 12,
                       ),
-                    ),
-                    if (alarm.quest.type != QuestType.none) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                      const SizedBox(width: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
                         child: Text(
-                          _questLabel(alarm.quest.type),
-                          style: const TextStyle(
-                            color: AppTheme.primary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
+                          alarm.hour < 12 ? 'AM' : 'PM',
+                          style: TextStyle(
+                            color: alarm.isEnabled ? AppTheme.neonCyan : AppTheme.textTertiary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (alarm.label.isNotEmpty) ...[
+                        Text(
+                          alarm.label,
+                          style: TextStyle(
+                            color: alarm.isEnabled ? AppTheme.textSecondary : AppTheme.textTertiary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: alarm.isEnabled ? AppTheme.neonPink : AppTheme.textTertiary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        alarm.repeatString,
+                        style: TextStyle(
+                          color: alarm.isEnabled ? AppTheme.textSecondary : AppTheme.textTertiary,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _nextRingText(),
+                    style: TextStyle(
+                      color: alarm.isEnabled ? AppTheme.textTertiary : AppTheme.textTertiary.withOpacity(0.5),
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (alarm.quest.type != QuestType.none) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        gradient: alarm.isEnabled ? AppTheme.primaryGradient : null,
+                        color: alarm.isEnabled ? null : AppTheme.surfaceHigh,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _getQuestIcon(alarm.quest.type),
+                            size: 14,
+                            color: alarm.isEnabled ? Colors.white : AppTheme.textTertiary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _questLabel(alarm.quest.type),
+                            style: TextStyle(
+                              color: alarm.isEnabled ? Colors.white : AppTheme.textTertiary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
-                ),
+                ],
               ),
-              Switch(
-                value: alarm.isEnabled,
-                onChanged: (_) => ref.read(alarmProvider.notifier).toggle(alarm.id),
-                activeColor: AppTheme.primary,
-                activeTrackColor: AppTheme.primary.withOpacity(0.3),
-                inactiveThumbColor: AppTheme.textTertiary,
-                inactiveTrackColor: AppTheme.surfaceHigh,
-              ),
-            ],
-          ),
+            ),
+            AnimatedToggle(
+              value: alarm.isEnabled,
+              onChanged: (_) => ref.read(alarmProvider.notifier).toggle(alarm.id),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  IconData _getQuestIcon(QuestType type) {
+    switch (type) {
+      case QuestType.math:
+        return Icons.calculate;
+      case QuestType.typeSentence:
+        return Icons.keyboard;
+      case QuestType.simon:
+        return Icons.memory;
+      case QuestType.qr:
+        return Icons.qr_code_scanner;
+      case QuestType.squat:
+      case QuestType.pushup:
+      case QuestType.situp:
+        return Icons.fitness_center;
+      default:
+        return Icons.extension;
+    }
   }
 }

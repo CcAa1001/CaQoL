@@ -3,8 +3,14 @@ import 'package:flutter/material.dart';
 
 class MathQuest extends StatefulWidget {
   final String difficulty;
+  final int repeatCount;
   final VoidCallback onSuccess;
-  const MathQuest({super.key, required this.difficulty, required this.onSuccess});
+  const MathQuest({
+    super.key,
+    required this.difficulty,
+    this.repeatCount = 1,
+    required this.onSuccess,
+  });
 
   @override
   State<MathQuest> createState() => _MathQuestState();
@@ -15,6 +21,7 @@ class _MathQuestState extends State<MathQuest> {
   late String _operator;
   final _ctrl = TextEditingController();
   bool _wrong = false;
+  int _solvedCount = 0;
 
   @override
   void initState() {
@@ -50,6 +57,15 @@ class _MathQuestState extends State<MathQuest> {
 
   void _check() {
     if (int.tryParse(_ctrl.text) == _answer) {
+      final target = widget.repeatCount.clamp(1, 5);
+      if (_solvedCount + 1 < target) {
+        setState(() {
+          _solvedCount += 1;
+          _ctrl.clear();
+          _generate();
+        });
+        return;
+      }
       widget.onSuccess();
     } else {
       setState(() => _wrong = true);
@@ -78,6 +94,13 @@ class _MathQuestState extends State<MathQuest> {
               color: _wrong ? Colors.red : Colors.white,
             ),
           ),
+          if (widget.repeatCount > 1) ...[
+            const SizedBox(height: 10),
+            Text(
+              '${_solvedCount + 1} / ${widget.repeatCount.clamp(1, 5)}',
+              style: const TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+          ],
           const SizedBox(height: 32),
           TextField(
             controller: _ctrl,

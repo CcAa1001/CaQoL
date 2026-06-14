@@ -7,6 +7,13 @@ class AppSettings {
   final bool awakeCheckEnabled;
   final int awakeCheckDelayMinutes;
   final int awakeCheckWindowMinutes;
+  final bool alarmRescheduleOnResume;
+  final bool alarmAudioBoostEnabled;
+  final bool alarmEscalationEnabled;
+  final int alarmEscalationSeconds;
+  final int emergencyDismissTapCount;
+  final int emergencyDismissCooldownDays;
+  final String? emergencyDismissLastUsedAt;
 
   const AppSettings({
     this.defaultMissionSeconds = 30,
@@ -15,6 +22,13 @@ class AppSettings {
     this.awakeCheckEnabled = false,
     this.awakeCheckDelayMinutes = 5,
     this.awakeCheckWindowMinutes = 2,
+    this.alarmRescheduleOnResume = true,
+    this.alarmAudioBoostEnabled = true,
+    this.alarmEscalationEnabled = true,
+    this.alarmEscalationSeconds = 20,
+    this.emergencyDismissTapCount = 100,
+    this.emergencyDismissCooldownDays = 7,
+    this.emergencyDismissLastUsedAt,
   });
 
   AppSettings copyWith({
@@ -25,6 +39,14 @@ class AppSettings {
     bool? awakeCheckEnabled,
     int? awakeCheckDelayMinutes,
     int? awakeCheckWindowMinutes,
+    bool? alarmRescheduleOnResume,
+    bool? alarmAudioBoostEnabled,
+    bool? alarmEscalationEnabled,
+    int? alarmEscalationSeconds,
+    int? emergencyDismissTapCount,
+    int? emergencyDismissCooldownDays,
+    String? emergencyDismissLastUsedAt,
+    bool? clearEmergencyDismissLastUsedAt,
   }) {
     return AppSettings(
       defaultMissionSeconds: defaultMissionSeconds ?? this.defaultMissionSeconds,
@@ -38,6 +60,21 @@ class AppSettings {
           awakeCheckDelayMinutes ?? this.awakeCheckDelayMinutes,
       awakeCheckWindowMinutes:
           awakeCheckWindowMinutes ?? this.awakeCheckWindowMinutes,
+      alarmRescheduleOnResume:
+          alarmRescheduleOnResume ?? this.alarmRescheduleOnResume,
+      alarmAudioBoostEnabled:
+          alarmAudioBoostEnabled ?? this.alarmAudioBoostEnabled,
+      alarmEscalationEnabled:
+          alarmEscalationEnabled ?? this.alarmEscalationEnabled,
+      alarmEscalationSeconds:
+          alarmEscalationSeconds ?? this.alarmEscalationSeconds,
+      emergencyDismissTapCount:
+          emergencyDismissTapCount ?? this.emergencyDismissTapCount,
+      emergencyDismissCooldownDays:
+          emergencyDismissCooldownDays ?? this.emergencyDismissCooldownDays,
+      emergencyDismissLastUsedAt: clearEmergencyDismissLastUsedAt == true
+          ? null
+          : emergencyDismissLastUsedAt ?? this.emergencyDismissLastUsedAt,
     );
   }
 
@@ -48,6 +85,13 @@ class AppSettings {
         'awakeCheckEnabled': awakeCheckEnabled,
         'awakeCheckDelayMinutes': awakeCheckDelayMinutes,
         'awakeCheckWindowMinutes': awakeCheckWindowMinutes,
+        'alarmRescheduleOnResume': alarmRescheduleOnResume,
+        'alarmAudioBoostEnabled': alarmAudioBoostEnabled,
+        'alarmEscalationEnabled': alarmEscalationEnabled,
+        'alarmEscalationSeconds': alarmEscalationSeconds,
+        'emergencyDismissTapCount': emergencyDismissTapCount,
+        'emergencyDismissCooldownDays': emergencyDismissCooldownDays,
+        'emergencyDismissLastUsedAt': emergencyDismissLastUsedAt,
       };
 
   factory AppSettings.fromMap(Map<dynamic, dynamic>? map) {
@@ -61,6 +105,14 @@ class AppSettings {
       awakeCheckEnabled: map['awakeCheckEnabled'] ?? false,
       awakeCheckDelayMinutes: map['awakeCheckDelayMinutes'] ?? 5,
       awakeCheckWindowMinutes: map['awakeCheckWindowMinutes'] ?? 2,
+      alarmRescheduleOnResume: map['alarmRescheduleOnResume'] ?? true,
+      alarmAudioBoostEnabled: map['alarmAudioBoostEnabled'] ?? true,
+      alarmEscalationEnabled: map['alarmEscalationEnabled'] ?? true,
+      alarmEscalationSeconds: map['alarmEscalationSeconds'] ?? 20,
+      emergencyDismissTapCount: map['emergencyDismissTapCount'] ?? 100,
+      emergencyDismissCooldownDays: map['emergencyDismissCooldownDays'] ?? 7,
+      emergencyDismissLastUsedAt:
+          map['emergencyDismissLastUsedAt']?.toString(),
     );
   }
 }

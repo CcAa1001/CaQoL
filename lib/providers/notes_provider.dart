@@ -1,58 +1,63 @@
 import 'dart:async';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/note.dart';
-import '../services/cloud_sync_service.dart';
-import '../services/notes_service.dart';
 import '../services/auth_service.dart';
-
-final notesServiceProvider = Provider((ref) => NotesService());
 
 final notesProvider = StateNotifierProvider<NotesNotifier, List<Note>>((ref) {
   final user = ref.watch(authStateProvider).valueOrNull;
-  return NotesNotifier(
-    ref.read(notesServiceProvider),
-    ref.read(notesCloudSyncServiceProvider),
-    isCloudEnabled: user != null,
-  );
+  return NotesNotifier(userId: user?.uid);
 });
 
 class NotesNotifier extends StateNotifier<List<Note>> {
-  final NotesService _service;
-  final NotesCloudSyncService _cloudSync;
-  final bool isCloudEnabled;
-  StreamSubscription<List<Note>>? _cloudSubscription;
+  final String? userId;
+  StreamSubscription<QuerySnapshot>? _subscription;
 
-  NotesNotifier(this._service, this._cloudSync, {required this.isCloudEnabled})
-    : super([]) {
-    _initialize();
+  NotesNotifier({required this.userId}) : super([]) {
+    _init();
   }
 
-  Future<void> _initialize() async {
-    _load();
-    if (!isCloudEnabled) {
-      return;
-    }
-    await _cloudSync.pushLocalSnapshot(_service.getAll(includeDeleted: true));
-    _cloudSubscription = _cloudSync.watch().listen((remoteNotes) async {
-      final locals = _service.getAll(includeDeleted: true);
-      final localById = {for (var n in locals) n.id: n};
-      final toSave = <Note>[];
-      for (final remote in remoteNotes) {
-        final local = localById[remote.id];
-        if (local == null || remote.deviceUpdatedAt.isAfter(local.deviceUpdatedAt)) {
-          toSave.add(remote);
+  void _init() {
+    if (userId == null) return;
+    _subscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('notes')
+        .snapshots()
+        .listen((snapshot) {
+      final notes = snapshot.docs.map((doc) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id;
+          data['title'] = data['title'] ?? 'Untitled';
+          data['body'] = data['body'] ?? '';
+          data['isDeleted'] = data['isDeleted'] ?? false;
+          
+          final nowIso = DateTime.now().toIso8601String();
+          if (data['createdAt'] is Timestamp) data['createdAt'] = (data['createdAt'] as Timestamp).toDate().toIso8601String();
+          else if (data['createdAt'] == null) data['createdAt'] = nowIso;
+          
+          if (data['updatedAt'] is Timestamp) data['updatedAt'] = (data['updatedAt'] as Timestamp).toDate().toIso8601String();
+          else if (data['updatedAt'] == null) data['updatedAt'] = nowIso;
+          
+          if (data['deviceUpdatedAt'] is Timestamp) data['deviceUpdatedAt'] = (data['deviceUpdatedAt'] as Timestamp).toDate().toIso8601String();
+          else if (data['deviceUpdatedAt'] == null) data['deviceUpdatedAt'] = data['updatedAt'] ?? nowIso;
+          
+          return Note.fromJson(data);
+        } catch (e) {
+          print('Error parsing note: $e');
+          return null;
         }
-      }
-      if (toSave.isNotEmpty) {
-        await _service.saveAll(toSave);
-        _load();
-      }
+      }).whereType<Note>().where((n) => !n.isDeleted).toList();
+      
+      notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      state = notes;
     });
   }
 
-  void _load() {
-    state = _service.getAll();
+  CollectionReference get _collection {
+    if (userId == null) throw Exception('User not logged in');
+    return FirebaseFirestore.instance.collection('users').doc(userId).collection('notes');
   }
 
   Future<Note> add(
@@ -68,73 +73,83 @@ class NotesNotifier extends StateNotifier<List<Note>> {
       title: title.isEmpty ? 'Untitled' : title,
       body: body,
       folderId: folderId,
+      sortOrder: 0,
       isFavorite: isFavorite,
       tags: tags,
       createdAt: now,
       updatedAt: now,
       deviceUpdatedAt: now,
     );
-    await _service.save(note);
-    _load();
-    if (isCloudEnabled) {
-      unawaited(_cloudSync.save(note));
-    }
+    await _collection.doc(note.id).set(note.toJson());
     return note;
   }
 
   Future<void> update(Note note) async {
-    await _service.save(note);
-    _load();
-    if (isCloudEnabled) {
-      unawaited(_cloudSync.save(note));
-    }
+    final updated = note.copyWith(
+      updatedAt: DateTime.now(),
+      deviceUpdatedAt: DateTime.now(),
+    );
+    await _collection.doc(note.id).set(updated.toJson());
   }
 
   Future<void> delete(String id) async {
-    final deletedNote = _service.getById(id)?.copyWith(isDeleted: true);
-    await _service.delete(id);
-    _load();
-    if (isCloudEnabled && deletedNote != null) {
-      unawaited(_cloudSync.save(deletedNote));
-    }
+    await _collection.doc(id).update({
+      'isDeleted': true,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'deviceUpdatedAt': DateTime.now().toIso8601String(),
+    });
   }
 
   Future<void> toggleFavorite(String id) async {
-    final note = _service.getById(id);
-    if (note == null) {
-      return;
-    }
-    final updated = note.copyWith(isFavorite: !note.isFavorite);
-    await update(updated);
+    final note = state.firstWhere((n) => n.id == id);
+    await update(note.copyWith(isFavorite: !note.isFavorite));
   }
 
   Future<void> moveOutOfFolder(String folderId) async {
-    final notes = _service.getAll(includeDeleted: true)
-        .where((note) => note.folderId == folderId)
-        .map((note) => note.copyWith(clearFolderId: true))
-        .toList();
-    await _service.moveNotesOutOfFolder(folderId);
-    _load();
-    if (isCloudEnabled) {
-      for (final note in notes) {
-        unawaited(_cloudSync.save(note));
-      }
+    final batch = FirebaseFirestore.instance.batch();
+    for (final note in state.where((n) => n.folderId == folderId)) {
+      final updated = note.copyWithClearFolder(clearFolderId: true);
+      batch.set(_collection.doc(note.id), updated.toJson());
     }
+    await batch.commit();
   }
 
   Future<void> importAll(List<Note> notes) async {
-    await _service.saveAll(notes);
-    _load();
-    if (isCloudEnabled) {
-      for (final note in notes) {
-        unawaited(_cloudSync.save(note));
-      }
+    final batch = FirebaseFirestore.instance.batch();
+    for (final note in notes) {
+      batch.set(_collection.doc(note.id), note.toJson());
     }
+    await batch.commit();
+  }
+
+  Future<void> moveToFolder(String id, String? folderId) async {
+    final note = state.firstWhere((n) => n.id == id);
+    final updated = note.copyWithClearFolder(
+      folderId: folderId,
+      clearFolderId: folderId == null,
+    );
+    await update(updated);
+  }
+
+  Future<void> reorder({
+    required String? folderId,
+    required List<String> orderedIds,
+  }) async {
+    final batch = FirebaseFirestore.instance.batch();
+    for (var i = 0; i < orderedIds.length; i++) {
+      final id = orderedIds[i];
+      try {
+        final note = state.firstWhere((n) => n.id == id);
+        final updated = note.copyWith(sortOrder: i);
+        batch.set(_collection.doc(id), updated.toJson());
+      } catch (_) {}
+    }
+    await batch.commit();
   }
 
   @override
   void dispose() {
-    _cloudSubscription?.cancel();
+    _subscription?.cancel();
     super.dispose();
   }
 }

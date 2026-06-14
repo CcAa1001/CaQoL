@@ -13,6 +13,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../notes/notes_screen.dart';
 import '../stickies/stickies_screen.dart';
+import 'qr_manager_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -194,6 +195,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   );
                 }).toList(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: 'QR Code Manager',
+            children: [
+              const Text(
+                'Save QR codes from around your house to use in Alarm wake missions.',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const QrManagerScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('Manage saved QR codes'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.surfaceHigh,
+                    foregroundColor: AppTheme.textPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
               ),
             ],
           ),

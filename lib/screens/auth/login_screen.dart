@@ -21,6 +21,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
+
     try {
       await ref.read(authServiceProvider).signInWithGoogle();
     } catch (error) {

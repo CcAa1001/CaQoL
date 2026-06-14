@@ -1,5 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+import '../../../../services/qr_service.dart';
 
 class QrQuest extends StatefulWidget {
   final List<String> expectedValues;
@@ -21,16 +24,36 @@ class _QrQuestState extends State<QrQuest> {
   bool _completed = false;
   bool _torchEnabled = false;
   late final String _selectedValue;
+  String _qrName = 'Unknown QR';
+
+  bool _hasPermission = false;
+
+  Future<void> _initScanner() async {
+    final status = await Permission.camera.request();
+    if (status.isGranted && mounted) {
+      setState(() => _hasPermission = true);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _initScanner();
     final options = widget.expectedValues
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toList();
     options.shuffle();
     _selectedValue = options.isEmpty ? '' : options.first;
+    
+    if (_selectedValue.isNotEmpty) {
+      final savedQrs = QrService().getAll();
+      final entry = savedQrs.entries.firstWhere(
+        (e) => e.value == _selectedValue,
+        orElse: () => MapEntry('Unknown QR', _selectedValue),
+      );
+      _qrName = entry.key;
+    }
   }
 
   @override
@@ -70,8 +93,8 @@ class _QrQuestState extends State<QrQuest> {
           Text(
             _selectedValue.isEmpty
                 ? 'This alarm does not have a saved QR yet, so any detected code will pass.'
-                : 'Point your camera at the selected code to dismiss the alarm.',
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
+                : 'Target: $_qrName\nPoint your camera at the QR code to dismiss the alarm.',
+            style: const TextStyle(color: Colors.white70, fontSize: 16),
             textAlign: TextAlign.center,
           ),
           if (widget.expectedValues.where((item) => item.trim().isNotEmpty).length > 1) ...[
@@ -89,26 +112,60 @@ class _QrQuestState extends State<QrQuest> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  MobileScanner(
-                    controller: _controller,
-                    onDetect: _handleDetect,
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white24, width: 2),
-                      borderRadius: BorderRadius.circular(24),
+                  if (_hasPermission)
+                    MobileScanner(
+                      controller: _controller,
+                      onDetect: _handleDetect,
+                    )
+                  else
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.videocam_off, size: 64, color: Colors.white30),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Camera permission is required to scan QR codes.\nSince it was denied, you may bypass this quest.',
+                              style: TextStyle(color: Colors.redAccent),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                _completed = true;
+                                widget.onSuccess();
+                              },
+                              icon: const Icon(Icons.warning_amber_rounded),
+                              label: const Text('Bypass Quest'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red.withOpacity(0.2),
+                                foregroundColor: Colors.redAccent,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  Center(
-                    child: Container(
-                      width: 220,
-                      height: 220,
+                  if (_hasPermission) ...[
+                    Container(
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.orangeAccent, width: 3),
+                        border: Border.all(color: Colors.white24, width: 2),
                         borderRadius: BorderRadius.circular(24),
                       ),
                     ),
-                  ),
+                    Center(
+                      child: Container(
+                        width: 220,
+                        height: 220,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.orangeAccent, width: 3),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -25,8 +25,8 @@ class StickyBackupService {
   }) {
     final payload = {
       'exportedAt': DateTime.now().toIso8601String(),
-      'boards': boards.map((board) => board.toMap()).toList(),
-      'stickies': stickies.map((sticky) => sticky.toMap()).toList(),
+      'boards': boards.map((b) => b.toJson()).toList(),
+      'stickies': stickies.map((s) => s.toJson()).toList(),
     };
 
     return saveNotesExport(
@@ -54,24 +54,26 @@ class StickyBackupService {
       throw const FormatException('Selected file is empty.');
     }
 
-    final raw = jsonDecode(content);
-    if (raw is! Map<String, dynamic>) {
+    final parsed = jsonDecode(content);
+    if (parsed is! Map<String, dynamic>) {
       throw const FormatException('Invalid backup format.');
     }
 
-    final boardsRaw = raw['boards'];
-    final stickiesRaw = raw['stickies'];
-    if (boardsRaw is! List || stickiesRaw is! List) {
-      throw const FormatException('Backup is missing boards or stickies.');
-    }
+    final rawBoards = parsed['boards'] as List? ?? [];
+    final parsedBoards = rawBoards
+        .whereType<Map>()
+        .map((m) => StickyBoard.fromJson(Map<String, dynamic>.from(m)))
+        .toList();
+
+    final rawStickies = parsed['stickies'] as List? ?? [];
+    final parsedStickies = rawStickies
+        .whereType<Map>()
+        .map((m) => Sticky.fromJson(Map<String, dynamic>.from(m)))
+        .toList();
 
     return StickyImportPayload(
-      boards: boardsRaw
-          .map((item) => StickyBoard.fromMap(Map<String, dynamic>.from(item)))
-          .toList(),
-      stickies: stickiesRaw
-          .map((item) => Sticky.fromMap(Map<String, dynamic>.from(item)))
-          .toList(),
+      boards: parsedBoards,
+      stickies: parsedStickies,
     );
   }
 }

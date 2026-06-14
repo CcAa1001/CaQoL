@@ -58,7 +58,7 @@ class AuthService {
         message: 'Google Sign-In was cancelled.',
       );
     }
-    final googleAuth = await googleUser.authentication;
+    final googleAuth = googleUser.authentication;
     final credential = GoogleAuthProvider.credential(
       idToken: googleAuth.idToken,
     );

@@ -800,7 +800,7 @@ class _StickiesScreenState extends ConsumerState<StickiesScreen> {
                         );
                   } else {
                     await ref.read(stickiesProvider.notifier).update(
-                          sticky.copyWith(
+                          sticky.copyWithClearBoard(
                             title: title,
                             body: body,
                             color: picked,

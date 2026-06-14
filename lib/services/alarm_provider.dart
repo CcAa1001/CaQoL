@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/alarm.dart';
-import '../models/quest_config.dart';
 import '../services/alarm_service.dart';
 
 final alarmServiceProvider = Provider((ref) => AlarmService());

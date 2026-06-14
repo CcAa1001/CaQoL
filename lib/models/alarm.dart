@@ -1,80 +1,33 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'quest_config.dart';
 
-class AlarmModel {
-  final String id;
-  final int platformId;
-  final String label;
-  final String soundPath;
-  final String? noteId;
-  final int hour;
-  final int minute;
-  final List<bool> repeatDays; // index 0=Mon, 6=Sun
-  final bool isEnabled;
-  final QuestConfig quest;
+part 'alarm.freezed.dart';
+part 'alarm.g.dart';
 
-  AlarmModel({
-    required this.id,
-    required this.platformId,
-    required this.label,
-    required this.soundPath,
-    this.noteId,
-    required this.hour,
-    required this.minute,
-    required this.repeatDays,
-    required this.isEnabled,
-    required this.quest,
-  });
-
-  AlarmModel copyWith({
-    int? platformId,
-    String? label,
-    String? soundPath,
+@freezed
+abstract class AlarmModel with _$AlarmModel {
+  const AlarmModel._();
+  @JsonSerializable(explicitToJson: true)
+  const factory AlarmModel({
+    required String id,
+    required int platformId,
+    required String label,
+    required String soundPath,
+    @Default('Motivation') String soundCategory,
+    @Default('genius_brain_frequency') String soundPackId,
+    @Default('assets/alarm.mp3') String fallbackSoundPath,
+    @Default(1.0) double alarmVolume,
+    @Default(0) int wakeCheckMinutes,
     String? noteId,
-    bool? clearNoteId,
-    int? hour,
-    int? minute,
-    List<bool>? repeatDays,
-    bool? isEnabled,
-    QuestConfig? quest,
-  }) =>
-      AlarmModel(
-        id: id,
-        platformId: platformId ?? this.platformId,
-        label: label ?? this.label,
-        soundPath: soundPath ?? this.soundPath,
-        noteId: clearNoteId == true ? null : noteId ?? this.noteId,
-        hour: hour ?? this.hour,
-        minute: minute ?? this.minute,
-        repeatDays: repeatDays ?? this.repeatDays,
-        isEnabled: isEnabled ?? this.isEnabled,
-        quest: quest ?? this.quest,
-      );
+    required int hour,
+    required int minute,
+    required List<bool> repeatDays,
+    required bool isEnabled,
+    DateTime? scheduledAt,
+    required QuestConfig quest,
+  }) = _AlarmModel;
 
-  Map<String, dynamic> toMap() => {
-    'id': id,
-    'platformId': platformId,
-    'label': label,
-    'soundPath': soundPath,
-    'noteId': noteId,
-    'hour': hour,
-    'minute': minute,
-    'repeatDays': repeatDays,
-    'isEnabled': isEnabled,
-    'quest': quest.toMap(),
-  };
-
-  factory AlarmModel.fromMap(Map<String, dynamic> map) => AlarmModel(
-    id: map['id'],
-    platformId: map['platformId'] ?? map['id'].hashCode.abs() % 2147483647, // Fallback for old local alarms
-    label: map['label'],
-    soundPath: map['soundPath'] ?? 'assets/alarm.mp3',
-    noteId: map['noteId'],
-    hour: map['hour'],
-    minute: map['minute'],
-    repeatDays: List<bool>.from(map['repeatDays']),
-    isEnabled: map['isEnabled'],
-    quest: QuestConfig.fromMap(Map<String, dynamic>.from(map['quest'])),
-  );
+  factory AlarmModel.fromJson(Map<String, dynamic> json) => _$AlarmModelFromJson(json);
 
   String get timeString {
     final h = hour.toString().padLeft(2, '0');
@@ -92,5 +45,43 @@ class AlarmModel {
         .where((e) => e.value)
         .map((e) => names[e.key])
         .join(', ');
+  }
+
+  AlarmModel copyWithClearNote({
+    int? platformId,
+    String? label,
+    String? soundPath,
+    String? soundCategory,
+    String? soundPackId,
+    String? fallbackSoundPath,
+    double? alarmVolume,
+    int? wakeCheckMinutes,
+    String? noteId,
+    bool clearNoteId = false,
+    int? hour,
+    int? minute,
+    List<bool>? repeatDays,
+    bool? isEnabled,
+    DateTime? scheduledAt,
+    bool clearScheduledAt = false,
+    QuestConfig? quest,
+  }) {
+    return copyWith(
+      platformId: platformId ?? this.platformId,
+      label: label ?? this.label,
+      soundPath: soundPath ?? this.soundPath,
+      soundCategory: soundCategory ?? this.soundCategory,
+      soundPackId: soundPackId ?? this.soundPackId,
+      fallbackSoundPath: fallbackSoundPath ?? this.fallbackSoundPath,
+      alarmVolume: alarmVolume ?? this.alarmVolume,
+      wakeCheckMinutes: wakeCheckMinutes ?? this.wakeCheckMinutes,
+      noteId: clearNoteId ? null : (noteId ?? this.noteId),
+      hour: hour ?? this.hour,
+      minute: minute ?? this.minute,
+      repeatDays: repeatDays ?? this.repeatDays,
+      isEnabled: isEnabled ?? this.isEnabled,
+      scheduledAt: clearScheduledAt ? null : (scheduledAt ?? this.scheduledAt),
+      quest: quest ?? this.quest,
+    );
   }
 }

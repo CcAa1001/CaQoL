@@ -42,19 +42,21 @@ class NoteImportService {
       throw const FormatException('Invalid backup format.');
     }
 
-    final foldersRaw = raw['folders'];
-    final notesRaw = raw['notes'];
-    if (foldersRaw is! List || notesRaw is! List) {
-      throw const FormatException('Backup is missing folders or notes.');
-    }
+    final rawFolders = raw['folders'] as List? ?? [];
+    final parsedFolders = rawFolders
+        .whereType<Map>()
+        .map((m) => NoteFolder.fromJson(Map<String, dynamic>.from(m)))
+        .toList();
+
+    final rawNotes = raw['notes'] as List? ?? [];
+    final parsedNotes = rawNotes
+        .whereType<Map>()
+        .map((m) => Note.fromJson(Map<String, dynamic>.from(m)))
+        .toList();
 
     return NoteImportPayload(
-      folders: foldersRaw
-          .map((item) => NoteFolder.fromMap(Map<String, dynamic>.from(item)))
-          .toList(),
-      notes: notesRaw
-          .map((item) => Note.fromMap(Map<String, dynamic>.from(item)))
-          .toList(),
+      folders: parsedFolders,
+      notes: parsedNotes,
     );
   }
 }

@@ -2,11 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/alarm.dart';
 import '../../models/quest_config.dart';
-import '../../services/notes_service.dart';
+import '../../providers/notes_provider.dart';
 import '../../providers/alarm_provider.dart';
 import '../notes/note_editor_screen.dart';
 import 'quests/math_quest.dart';
@@ -14,6 +15,8 @@ import 'quests/qr_quest.dart';
 import 'quests/simon_quest.dart';
 import 'quests/squat_quest.dart';
 import 'quests/type_quest.dart';
+import 'quests/pushup_quest.dart';
+import 'quests/situp_quest.dart';
 
 class AlarmTriggerScreen extends ConsumerStatefulWidget {
   final AlarmModel alarm;
@@ -46,10 +49,22 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+    if (!widget.isPreview) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        const MethodChannel('caqol/alarm_clock').invokeMethod('startLockTask').catchError((_) {});
+      }
+    }
   }
 
   @override
   void dispose() {
+    if (!widget.isPreview) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        const MethodChannel('caqol/alarm_clock').invokeMethod('stopLockTask').catchError((_) {});
+      }
+    }
     _clockTimer?.cancel();
     _missionTimer?.cancel();
     super.dispose();
@@ -67,7 +82,9 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
     await ref.read(alarmProvider.notifier).completeAfterDismiss(widget.alarm.id);
     if (mounted) {
       final linkedNoteId = widget.alarm.noteId;
-      final linkedNote = linkedNoteId == null ? null : NotesService().getById(linkedNoteId);
+      final linkedNote = linkedNoteId == null 
+          ? null 
+          : ref.read(notesProvider).where((n) => n.id == linkedNoteId).firstOrNull;
       Navigator.of(context).popUntil((route) => route.isFirst);
       if (linkedNote != null) {
         await Navigator.of(context).push(
@@ -110,6 +127,9 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
     _missionTimer?.cancel();
     _timeoutHandled = false;
     _missionTimeLeft = widget.alarm.quest.missionSeconds;
+    if (_missionTimeLeft < 60 && widget.alarm.quest.type == QuestType.simon) {
+      _missionTimeLeft = 180; // Minimum 3 minutes for Simon Says
+    }
     _missionTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted) {
         timer.cancel();
@@ -163,6 +183,10 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
         return 'Scan your QR code';
       case QuestType.squat:
         return 'Walk ${widget.alarm.quest.squatCount} steps';
+      case QuestType.pushup:
+        return 'Do ${widget.alarm.quest.squatCount} pushups';
+      case QuestType.situp:
+        return 'Do ${widget.alarm.quest.squatCount} situps';
     }
   }
 
@@ -181,74 +205,137 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF1a1a2e), Color(0xFF16213e), Color(0xFF0f3460)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F0C29), Color(0xFF302B63), Color(0xFF24243E)],
         ),
       ),
       child: SafeArea(
         child: Column(
           children: [
             const SizedBox(height: 60),
-            const Icon(Icons.lock_outline, color: Colors.white54, size: 20),
-            const SizedBox(height: 4),
-            Text(
-              widget.isPreview ? 'Preview mode' : 'Swipe up to unlock',
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-            const SizedBox(height: 40),
-            Text(
-              _timeString,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 88,
-                fontWeight: FontWeight.w200,
-                letterSpacing: -4,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white.withOpacity(0.2)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.notifications_active, color: Color(0xFF00F0FF), size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.isPreview ? 'PREVIEW MODE' : 'ALARM RINGING',
+                    style: const TextStyle(
+                      color: Color(0xFF00F0FF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Text(
-              _dateString,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 18,
-                fontWeight: FontWeight.w300,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              widget.alarm.label.isEmpty
-                  ? (widget.isPreview ? 'Mission preview' : 'Alarm')
-                  : widget.alarm.label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.w400,
-                letterSpacing: 1,
-              ),
-            ),
-            if (widget.alarm.quest.type != QuestType.none) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white12,
-                  borderRadius: BorderRadius.circular(20),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 20),
+                    Text(
+                      _timeString,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 100,
+                        fontWeight: FontWeight.w200,
+                        letterSpacing: -5,
+                        height: 1,
+                      ),
+                    ),
+                    Text(
+                      _dateString,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                    Text(
+                      widget.alarm.label.isEmpty
+                          ? 'Wake Up'
+                          : widget.alarm.label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    if (widget.alarm.quest.type != QuestType.none) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 40),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: const Color(0xFFFF0066).withOpacity(0.5)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFF0066).withOpacity(0.3),
+                              blurRadius: 30,
+                              spreadRadius: -5,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            const Text(
+                              'MANDATORY QUEST',
+                              style: TextStyle(
+                                color: Color(0xFFFF0066),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _questInstruction(),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                  ],
                 ),
-                child: Text(
-                  'Mission: ${_questInstruction()}',
-                  style: const TextStyle(color: Colors.white60, fontSize: 13),
-                ),
               ),
-            ],
-            const SizedBox(height: 40),
+            ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 if (widget.alarm.quest.type == QuestType.none || widget.isPreview)
-                  _LockButton(
-                    icon: widget.isPreview ? Icons.close : Icons.snooze,
-                    label: widget.isPreview ? 'Close' : 'Snooze',
+                  GestureDetector(
                     onTap: widget.isPreview ? () => Navigator.of(context).pop() : _snooze,
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        widget.isPreview ? Icons.close : Icons.snooze,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
                   ),
                 GestureDetector(
                   onTap: () {
@@ -260,20 +347,30 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
                   },
                   child: Container(
                     width: 220,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    height: 80,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8A020),
-                      borderRadius: BorderRadius.circular(50),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF00F0FF), Color(0xFF7B61FF)],
+                      ),
+                      borderRadius: BorderRadius.circular(40),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF00F0FF).withOpacity(0.5),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        ),
+                      ],
                     ),
                     child: Center(
                       child: Text(
                         widget.alarm.quest.type == QuestType.none
-                            ? (widget.isPreview ? 'Close' : 'Dismiss')
-                            : (widget.isPreview ? 'Start Preview' : 'Wake Up'),
+                            ? (widget.isPreview ? 'CLOSE' : 'DISMISS')
+                            : (widget.isPreview ? 'START PREVIEW' : 'START QUEST'),
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: Colors.black,
                           fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
                         ),
                       ),
                     ),
@@ -281,7 +378,7 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 48),
+            const SizedBox(height: 40),
           ],
         ),
       ),
@@ -385,6 +482,16 @@ class _AlarmTriggerScreenState extends ConsumerState<AlarmTriggerScreen> {
           );
         }
         return SquatQuest(
+          targetCount: widget.alarm.quest.squatCount,
+          onSuccess: _dismiss,
+        );
+      case QuestType.pushup:
+        return PushupQuest(
+          targetCount: widget.alarm.quest.squatCount,
+          onSuccess: _dismiss,
+        );
+      case QuestType.situp:
+        return SitupQuest(
           targetCount: widget.alarm.quest.squatCount,
           onSuccess: _dismiss,
         );

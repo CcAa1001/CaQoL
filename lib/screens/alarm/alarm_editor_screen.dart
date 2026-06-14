@@ -13,6 +13,7 @@ import '../../providers/alarm_provider.dart';
 import '../../providers/app_settings_provider.dart';
 import '../../providers/notes_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../services/qr_service.dart';
 import 'alarm_trigger_screen.dart';
 import 'quests/qr_quest.dart';
 
@@ -161,40 +162,72 @@ class _AlarmEditorScreenState extends ConsumerState<AlarmEditorScreen> {
       ),
       body: ListView(
         children: [
-          SizedBox(
-            height: 200,
-            child: Row(
-              children: [
-                Expanded(
-                  child: CupertinoPicker(
-                    looping: true,
-                    scrollController: FixedExtentScrollController(initialItem: _hour),
-                    itemExtent: 56,
-                    onSelectedItemChanged: (v) => setState(() => _hour = v),
-                    children: List.generate(24, (i) => Center(
-                      child: Text(
-                        i.toString().padLeft(2, '0'),
-                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 36, fontWeight: FontWeight.w300),
-                      ),
-                    )),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+            child: Container(
+              height: 220,
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceHigh.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: AppTheme.primary.withOpacity(0.3), width: 1),
+                boxShadow: const [AppTheme.glowingShadow],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    height: 56,
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
-                ),
-                const Text(':', style: TextStyle(color: AppTheme.textPrimary, fontSize: 36, fontWeight: FontWeight.w300)),
-                Expanded(
-                  child: CupertinoPicker(
-                    looping: true,
-                    scrollController: FixedExtentScrollController(initialItem: _minute),
-                    itemExtent: 56,
-                    onSelectedItemChanged: (v) => setState(() => _minute = v),
-                    children: List.generate(60, (i) => Center(
-                      child: Text(
-                        i.toString().padLeft(2, '0'),
-                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 36, fontWeight: FontWeight.w300),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: CupertinoPicker(
+                          looping: true,
+                          scrollController: FixedExtentScrollController(initialItem: _hour),
+                          itemExtent: 56,
+                          onSelectedItemChanged: (v) => setState(() => _hour = v),
+                          selectionOverlay: const SizedBox.shrink(),
+                          children: List.generate(24, (i) => Center(
+                            child: Text(
+                              i.toString().padLeft(2, '0'),
+                              style: TextStyle(
+                                color: _hour == i ? AppTheme.neonCyan : AppTheme.textSecondary, 
+                                fontSize: _hour == i ? 42 : 32, 
+                                fontWeight: _hour == i ? FontWeight.w600 : FontWeight.w300,
+                              ),
+                            ),
+                          )),
+                        ),
                       ),
-                    )),
+                      const Text(':', style: TextStyle(color: AppTheme.neonCyan, fontSize: 42, fontWeight: FontWeight.w600)),
+                      Expanded(
+                        child: CupertinoPicker(
+                          looping: true,
+                          scrollController: FixedExtentScrollController(initialItem: _minute),
+                          itemExtent: 56,
+                          onSelectedItemChanged: (v) => setState(() => _minute = v),
+                          selectionOverlay: const SizedBox.shrink(),
+                          children: List.generate(60, (i) => Center(
+                            child: Text(
+                              i.toString().padLeft(2, '0'),
+                              style: TextStyle(
+                                color: _minute == i ? AppTheme.neonCyan : AppTheme.textSecondary, 
+                                fontSize: _minute == i ? 42 : 32, 
+                                fontWeight: _minute == i ? FontWeight.w600 : FontWeight.w300,
+                              ),
+                            ),
+                          )),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const Divider(color: AppTheme.border),
@@ -309,20 +342,25 @@ class _AlarmEditorScreenState extends ConsumerState<AlarmEditorScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: List.generate(7, (i) => GestureDetector(
                     onTap: () => setState(() => _repeatDays[i] = !_repeatDays[i]),
-                    child: Container(
-                      width: 40,
-                      height: 40,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOutBack,
+                      width: 42,
+                      height: 42,
                       decoration: BoxDecoration(
-                        color: _repeatDays[i] ? AppTheme.primary : AppTheme.surfaceHigh,
+                        gradient: _repeatDays[i] ? AppTheme.primaryGradient : null,
+                        color: _repeatDays[i] ? null : AppTheme.surfaceHigh,
                         shape: BoxShape.circle,
+                        boxShadow: _repeatDays[i] ? [AppTheme.glowingShadow] : null,
+                        border: _repeatDays[i] ? null : Border.all(color: AppTheme.border),
                       ),
                       child: Center(
                         child: Text(
                           _days[i],
                           style: TextStyle(
-                            color: _repeatDays[i] ? Colors.black : AppTheme.textSecondary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                            color: _repeatDays[i] ? Colors.white : AppTheme.textSecondary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
@@ -599,26 +637,46 @@ class _SimonConfig extends StatelessWidget {
   }
 }
 
-class _QrConfig extends StatelessWidget {
+class _QrConfig extends StatefulWidget {
   final QuestConfig quest;
   final ValueChanged<QuestConfig> onChanged;
   const _QrConfig({required this.quest, required this.onChanged});
 
   @override
+  State<_QrConfig> createState() => _QrConfigState();
+}
+
+class _QrConfigState extends State<_QrConfig> {
+  late Map<String, String> _savedQrs = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQrs();
+  }
+
+  void _loadQrs() {
+    setState(() {
+      _savedQrs = QrService().getAll();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final registeredValues = {
-      if (quest.qrValue.trim().isNotEmpty) quest.qrValue.trim(),
-      ...quest.qrOptions.map((item) => item.trim()).where((item) => item.isNotEmpty),
+      if (widget.quest.qrValue.trim().isNotEmpty) widget.quest.qrValue.trim(),
+      ...widget.quest.qrOptions.map((item) => item.trim()).where((item) => item.isNotEmpty),
     }.toList();
+
     return _ConfigCard(
-      title: 'QR / barcode roulette',
+      title: 'QR Code Selection',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             registeredValues.isEmpty
-                ? 'No household codes registered yet.'
-                : '${registeredValues.length} code${registeredValues.length == 1 ? '' : 's'} saved. One will be chosen at random each morning.',
+                ? 'No QR codes selected for this alarm.'
+                : '${registeredValues.length} code${registeredValues.length == 1 ? '' : 's'} selected. One will be chosen at random each morning.',
             style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
           if (registeredValues.isNotEmpty) ...[
@@ -627,16 +685,17 @@ class _QrConfig extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: registeredValues.map((value) {
-                final index = registeredValues.indexOf(value);
+                // Find the name of this QR code from savedQrs
+                final entry = _savedQrs.entries.firstWhere(
+                  (e) => e.value == value,
+                  orElse: () => MapEntry('Unknown QR', value),
+                );
                 return InputChip(
-                  label: Text(
-                    'Item ${index + 1}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
+                  label: Text(entry.key, style: const TextStyle(fontSize: 12)),
                   onDeleted: () {
                     final updated = [...registeredValues]..remove(value);
-                    onChanged(
-                      quest.copyWith(
+                    widget.onChanged(
+                      widget.quest.copyWith(
                         qrValue: updated.isEmpty ? '' : updated.first,
                         qrOptions: updated,
                       ),
@@ -651,30 +710,40 @@ class _QrConfig extends StatelessWidget {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: () async {
-                final value = await Navigator.of(context).push<String>(
-                  MaterialPageRoute(
-                    builder: (_) => const QrScannerScreen(
-                      title: 'Register QR code',
-                      description: 'Scan the QR code that will be required to dismiss this alarm.',
-                    ),
-                  ),
+                final selectedValue = await showModalBottomSheet<String>(
+                  context: context,
+                  backgroundColor: AppTheme.surface,
+                  builder: (context) => _savedQrs.isEmpty
+                      ? Container(
+                          padding: const EdgeInsets.all(24),
+                          child: const Text('No saved QR codes found. Please go to Settings to add QR codes.', style: TextStyle(color: Colors.white)),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.all(16),
+                          children: _savedQrs.entries.map((e) => ListTile(
+                            leading: const Icon(Icons.qr_code, color: AppTheme.neonCyan),
+                            title: Text(e.key, style: const TextStyle(color: Colors.white)),
+                            onTap: () => Navigator.pop(context, e.value),
+                          )).toList(),
+                        ),
                 );
-                if (value != null && value.isNotEmpty) {
+
+                if (selectedValue != null && selectedValue.isNotEmpty) {
                   final updated = [...registeredValues];
-                  if (!updated.contains(value)) {
-                    updated.add(value);
+                  if (!updated.contains(selectedValue)) {
+                    updated.add(selectedValue);
                   }
-                  onChanged(
-                    quest.copyWith(
+                  widget.onChanged(
+                    widget.quest.copyWith(
                       qrValue: updated.first,
                       qrOptions: updated,
                     ),
                   );
                 }
               },
-              icon: const Icon(Icons.qr_code_scanner, size: 18),
+              icon: const Icon(Icons.checklist, size: 18),
               label: Text(
-                registeredValues.isEmpty ? 'Scan QR to register' : 'Add another code',
+                registeredValues.isEmpty ? 'Select from Saved QRs' : 'Add another code',
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.surfaceHigh,
@@ -687,6 +756,7 @@ class _QrConfig extends StatelessWidget {
     );
   }
 }
+
 
 class _SquatConfig extends StatelessWidget {
   final QuestConfig quest;

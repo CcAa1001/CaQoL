@@ -130,7 +130,7 @@ class NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         savedNoteId = created.id;
       } else {
         final current = _findActiveNote(ref.read(notesProvider)) ?? widget.note!;
-        final updated = current.copyWith(
+        final updated = current.copyWithClearFolder(
           title: title,
           body: body,
           folderId: _selectedFolderId,

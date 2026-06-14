@@ -13,14 +13,29 @@ class NoteExportService {
   }) {
     final payload = {
       'exportedAt': DateTime.now().toIso8601String(),
-      'folders': folders.map((folder) => folder.toMap()).toList(),
-      'notes': notes.map((note) => note.toMap()).toList(),
+      'folders': folders.map((f) => f.toJson()).toList(),
+      'notes': notes.map((n) => n.toJson()).toList(),
     };
 
     return saveNotesExport(
       jsonEncode(payload),
       filename:
           'caqol_notes_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-')}.json',
+    );
+  }
+
+  Future<String> exportCompiledDocument({
+    required String title,
+    required String content,
+  }) {
+    final safeTitle = title
+        .trim()
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
+    return saveNotesExport(
+      content,
+      filename:
+          '${safeTitle.isEmpty ? 'caqol_manuscript' : safeTitle}_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-')}.txt',
     );
   }
 }
